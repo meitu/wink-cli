@@ -1,0 +1,23 @@
+{
+  "name": "wink-cli",
+  "version": "0.1.0",
+  "description": "Install the Wink CLI Cursor Agent Skill.",
+  "bin": {
+    "wink-cli": "bin/wink-cli.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "SKILL.md",
+    "README.md"
+  ],
+  "keywords": [
+    "wink",
+    "cursor",
+    "agent",
+    "skill",
+    "cli"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}
