@@ -1,7 +1,27 @@
 {
   "name": "wink-cli",
   "version": "0.1.0",
+  "private": true,
   "description": "Install the Wink CLI Cursor Agent Skill.",
+  "keywords": [
+    "wink",
+    "cursor",
+    "agent",
+    "skill",
+    "cli"
+  ],
+  "homepage": "https://github.com/meitu/wink-cli#readme",
+  "bugs": {
+    "url": "https://github.com/meitu/wink-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meitu/wink-cli.git"
+  },
+  "license": "MIT",
+  "author": "meitu",
+  "type": "commonjs",
+  "main": "bin/wink-cli.js",
   "bin": {
     "wink-cli": "bin/wink-cli.js"
   },
@@ -11,13 +31,7 @@
     "SKILL.md",
     "README.md"
   ],
-  "keywords": [
-    "wink",
-    "cursor",
-    "agent",
-    "skill",
-    "cli"
-  ],
-  "license": "UNLICENSED",
-  "private": true
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
 }

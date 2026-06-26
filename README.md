@@ -1,6 +1,6 @@
 # wink-cli Skill Installer
 
-Installs the Wink CLI Cursor Agent Skill into:
+Installs the Wink CLI Agent Skill into:
 
 ```text
 ~/.agents/skills/wink-cli/
