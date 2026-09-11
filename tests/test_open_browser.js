@@ -13,7 +13,7 @@ const previous = process.env.WINK_CLI_BROWSER_URL;
 for (const platform of ["win32", "darwin", "linux"]) {
   for (const url of urls) {
     let called = 0, detached = false;
-    openBrowser(url, { platform, spawnProcess(command, args, options) {
+    openBrowser(url, { platform, onError: () => {}, spawnProcess(command, args, options) {
       called++;
       assert.ok(!options.shell, "URLs must not go through a command shell");
       assert.strictEqual(options.stdio, "ignore");
@@ -22,7 +22,8 @@ for (const platform of ["win32", "darwin", "linux"]) {
         assert.strictEqual(command, "powershell.exe");
         assert.deepStrictEqual(args.slice(0, 3), ["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
         const script = Buffer.from(args[3], "base64").toString("utf16le");
-        assert.strictEqual(script, "Start-Process -FilePath $env:WINK_CLI_BROWSER_URL");
+        assert.strictEqual(script, "Start-Process -FilePath $env:WINK_CLI_BROWSER_URL -WindowStyle Normal -ErrorAction Stop");
+        assert.strictEqual(options.windowsHide, true, "only the helper window should be hidden");
         assert.ok(!script.includes(url), "URL data must never become PowerShell source code");
         assert.strictEqual(options.env.WINK_CLI_BROWSER_URL, url, "preserve all query parameters");
         if (url === auth.auth_url) {
@@ -44,5 +45,22 @@ for (const platform of ["win32", "darwin", "linux"]) {
   }
 }
 assert.strictEqual(process.env.WINK_CLI_BROWSER_URL, previous, "do not mutate the parent environment");
-assert.doesNotThrow(() => openBrowser(auth.auth_url, { spawnProcess() { throw new Error("fixture: unavailable"); } }));
+const failures = [];
+openBrowser(auth.auth_url, {
+  spawnProcess() { throw new Error("fixture: unavailable"); },
+  onError: error => failures.push(error.message),
+});
+assert.deepStrictEqual(failures, ["fixture: unavailable"]);
+for (const event of ["error", "exit", "signal", "success"]) {
+  const child = new EventEmitter();
+  child.unref = () => {};
+  const errors = [];
+  openBrowser(auth.auth_url, { spawnProcess: () => child, onError: error => errors.push(error.message) });
+  if (event === "error") {
+    child.emit("error", new Error("spawn ENOENT"));
+    child.emit("exit", -1, null);
+  } else if (event === "signal") child.emit("exit", null, "SIGTERM");
+  else child.emit("exit", event === "success" ? 0 : 1, null);
+  assert.strictEqual(errors.length, event === "success" ? 0 : 1, "report launch failures exactly once");
+}
 console.log("browser opener: complete Windows auth/payment URLs, URL data isolation, macOS/Linux and launch failures passed");
