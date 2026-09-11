@@ -1,0 +1,21 @@
+node_modules/
+wink-results/
+.DS_Store
+*.tgz
+npm-debug.log*
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.wink-mcp-server/
+
+# Generated diagnostics and test reports
+*.log
+coverage/
+.nyc_output/
+
+# Editor and operating-system files
+.idea/
+*.swp
+Thumbs.db

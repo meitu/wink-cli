@@ -1,37 +1,41 @@
 {
-  "name": "wink-cli",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Install the Wink CLI Cursor Agent Skill.",
-  "keywords": [
-    "wink",
-    "cursor",
-    "agent",
-    "skill",
-    "cli"
-  ],
-  "homepage": "https://github.com/meitu/wink-cli#readme",
-  "bugs": {
-    "url": "https://github.com/meitu/wink-cli/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/meitu/wink-cli.git"
-  },
-  "license": "MIT",
-  "author": "meitu",
+  "name": "wink-cli-v2",
+  "version": "1.10.0",
+  "description": "Wink CLI for cloud image and video processing: login, media validation, upload, submit, poll and return result URLs.",
   "type": "commonjs",
-  "main": "bin/wink-cli.js",
+  "main": "src/cli.js",
   "bin": {
-    "wink-cli": "bin/wink-cli.js"
+    "wink-cli": "src/cli.js",
+    "wink-connector": "connector/wink-connector.js",
+    "wink-cli-v2": "src/cli.js"
   },
   "files": [
-    "bin/",
-    "src/",
-    "SKILL.md",
-    "README.md"
+    "src",
+    "connector",
+    "wink-cli",
+    "wink-cli.cmd",
+    "README.md",
+    "CLI-TESTING.md"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/cli.js",
+    "cli": "node src/cli.js",
+    "test": "node tests/test_upload_sdk.js && node tests/test_mp4_metadata.js && node tests/test_cli.js && node tests/test_cli_progress.js && node tests/test_cloud_tools.js && node tests/test_cli_flow.js && node tests/test_cli_env.js && node tests/test_install.js && node tests/test_beans.js",
+    "prepublishOnly": "npm test",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "keywords": [
+    "wink",
+    "cli",
+    "video",
+    "image",
+    "cloud-processing"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "image-size": "2.0.2"
   }
 }
