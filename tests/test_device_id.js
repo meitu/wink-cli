@@ -12,10 +12,17 @@ const dir = path.join(homeDir, ".wink-mcp-server");
 const cache = path.join(dir, "task-gnum");
 const settings = { homeDir, env: {} };
 try {
-  assert.throws(() => resolveGnumSync(settings), /尚未取得有效 gnum/);
-  assert.ok(!fs.existsSync(cache), "never generate an unregistered random ID");
   assert.strictEqual(resolveGnumSync({ homeDir, env: { WINK_TASK_GNUM: "12345" } }), "12345");
   assert.ok(!fs.existsSync(cache));
+  const generated = resolveGnumSync(settings);
+  assert.strictEqual(normalizeGnum(generated), generated, "new users get a decimal positive int64");
+  assert.strictEqual(fs.readFileSync(cache, "utf8").trim(), generated);
+  assert.strictEqual(resolveGnumSync(settings), generated, "reuse the persisted ID");
+  const { execFileSync } = require("child_process");
+  const fromNewProcess = execFileSync(process.execPath, ["-e", `console.log(require(${JSON.stringify(require.resolve("../src/device_id"))}).resolveGnumSync(${JSON.stringify(settings)}))`], { encoding: "utf8" }).trim();
+  assert.strictEqual(fromNewProcess, generated, "new processes reuse the same ID");
+  assert.strictEqual(resolveGnumSync({ homeDir, env: { WINK_TASK_GNUM: "12345" } }), "12345");
+  assert.strictEqual(fs.readFileSync(cache, "utf8").trim(), generated, "explicit override does not overwrite cache");
   fs.mkdirSync(path.join(dir, "datareport"), { recursive: true });
   fs.writeFileSync(cache, "C17186D98AA53EA860A4BD90F4688A05");
   const legacy = path.join(dir, "datareport", "dataReport.json");
@@ -27,7 +34,8 @@ try {
   assert.strictEqual(resolveGnumSync(settings), "95250056");
   fs.writeFileSync(cache, "bad");
   fs.writeFileSync(legacy, JSON.stringify({ gid: "not-a-gid" }));
-  assert.throws(() => resolveGnumSync(settings), /尚未取得有效 gnum/);
-  assert.strictEqual(fs.readFileSync(cache, "utf8"), "bad");
-  console.log("device ID: int64 validation, stable cache, legacy migration, explicit override and missing allocation passed");
+  const repaired = resolveGnumSync(settings);
+  assert.strictEqual(normalizeGnum(repaired), repaired);
+  assert.strictEqual(fs.readFileSync(cache, "utf8").trim(), repaired, "replace invalid cache with a numeric ID");
+  console.log("device ID: int64 validation, first-use generation, cross-process persistence, legacy migration, explicit override and invalid-cache repair passed");
 } finally { fs.rmSync(homeDir, { recursive: true, force: true }); }
