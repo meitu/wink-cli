@@ -1,13 +1,12 @@
 {
-  "name": "wink-cli-v2",
+  "name": "wink-cli",
   "version": "1.10.0",
   "description": "Wink CLI for cloud image and video processing: login, media validation, upload, submit, poll and return result URLs.",
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {
     "wink-cli": "src/cli.js",
-    "wink-connector": "connector/wink-connector.js",
-    "wink-cli-v2": "src/cli.js"
+    "wink-connector": "connector/wink-connector.js"
   },
   "files": [
     "src",

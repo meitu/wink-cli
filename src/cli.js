@@ -576,8 +576,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         rightDetail: JSON.stringify({ source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
         interval,
         timeout,
-        onInsufficientBeans: async () => {
-          await waitForRecharge();
+        onInsufficientBeans: async rejection => {
+          await waitForRecharge(rejection);
           fileProgress.processing();
           return true;
         },

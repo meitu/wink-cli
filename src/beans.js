@@ -35,7 +35,7 @@ function createRechargeHandler({ client, env, openBrowser, report, now = Date.no
     }
     return amount;
   }
-  return async () => {
+  return async rejection => {
     if (!url) throw new Error("美豆不足：自定义接口未配置充值环境，请充值后重新运行");
     if (deadline === undefined) deadline = now() + TIMEOUT_MS;
     if (now() >= deadline) throw timedOut();
@@ -45,7 +45,12 @@ function createRechargeHandler({ client, env, openBrowser, report, now = Date.no
     try {
       baseline = await readAmount();
     } catch (error) {
-      throw new Error(`美豆不足：无法获取充值前余额，未启动充值轮询：${error.message}`);
+      const original = rejection?.message || "美豆不足";
+      const code = rejection?.code ?? rejection?.extCode;
+      const failure = new Error(`${original}${rejection?.code != null ? `（code=${code}）` : ""}；无法获取充值前余额，未启动充值轮询：${error.message}。可手动充值后重新运行；充值链接 ${url}`);
+      failure.extCode = code;
+      failure.cause = error;
+      throw failure;
     }
     report(`美豆不足，已记录当前美豆 ${baseline}，请在浏览器购买美豆；充值链接 ${url}`);
     if (!opened) {

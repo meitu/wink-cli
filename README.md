@@ -15,7 +15,9 @@ wink-cli --help
 
 若全局目录没有写入权限，可使用 `npx github:meitu/wink-cli install --prefix <可写目录>`。macOS/Linux 将 `<可写目录>/bin` 加入 PATH，Windows 将 `<可写目录>` 加入用户 Path，再重新打开终端。安装后使用 `wink-cli`；旧的 `wink` 命令不再由本包注册。
 
-卸载使用 `npm uninstall -g wink-cli-v2`；自定义安装前缀时追加相同的 `--prefix <目录>`。安装帮助：`wink-cli install --help`。
+卸载使用 `npm uninstall -g wink-cli`；自定义安装前缀时追加相同的 `--prefix <目录>`。安装帮助：`wink-cli install --help`。
+
+如果此前安装过旧包 `wink-cli-v2`，请先运行 `npm uninstall -g wink-cli-v2`，再执行上面的安装命令，避免旧包占用同名命令。使用自定义 `--prefix` 时，卸载也需要指定相同前缀。
 
 ### 从源码运行
 

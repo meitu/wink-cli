@@ -94,7 +94,7 @@ async function capture(fn) {
           assert.strictEqual(req.headers.api_key, "test-key");
           if (mode.startsWith("recharge-") && rechargeSubmits++ === 0) {
             if (mode === "recharge-http") res.statusCode = 400;
-            res.end(JSON.stringify({ code: 1999, message: "美豆不足，请充值" }));
+            res.end(JSON.stringify({ code: 1999, message: "美豆不足，需6美豆，当前余额0美豆" }));
             return;
           }
           if (mode === "http-parameter-failure" || (form.get("content_type") === "2" && form.has("duration") && !/^\d+$/.test(form.get("duration")))) {
@@ -111,6 +111,11 @@ async function capture(fn) {
           assert.strictEqual(url.searchParams.get("gnum"), "offline-cli-flow");
           assert.strictEqual(url.searchParams.get("is_test"), "0");
           balanceCalls++;
+          if (mode === "recharge-missing-route") {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ code: 10007, message: "接口不存在" }));
+            return;
+          }
           res.end(JSON.stringify(mode === "recharge-invalid" ? { code: 0, data: {} } : {
             code: 0, data: { total_amount: balanceCalls < 3 ? 10 : 11 },
           }));
@@ -192,7 +197,7 @@ async function capture(fn) {
     }
     assert.ok(!/upload progress=|task_id=|content_type=|\x1b/.test(mixed.err));
 
-    for (const rechargeMode of ["recharge-json", "recharge-http", "recharge-invalid"]) {
+    for (const rechargeMode of ["recharge-json", "recharge-http", "recharge-invalid", "recharge-missing-route"]) {
       mode = rechargeMode; events = []; rechargeSubmits = balanceCalls = 0;
       let clock = 0;
       const opened = [], waits = [], beforeSubmits = submits.length;
@@ -201,12 +206,20 @@ async function capture(fn) {
         sleep: async ms => { assert.strictEqual(ms, 5000); waits.push(ms); clock += ms; },
         openBrowser: url => { assert.strictEqual(balanceCalls, 1); opened.push(url); events.push("open-payment"); },
       } }));
-      if (mode === "recharge-invalid") {
+      if (["recharge-invalid", "recharge-missing-route"].includes(mode)) {
         assert.strictEqual(charged.code, 3, charged.err);
         assert.match(charged.err, /无法获取充值前余额/);
         assert.strictEqual(opened.length, 0);
         assert.strictEqual(rechargeSubmits, 1);
         assert.ok(!events.includes("query"));
+        assert.match(charged.err, /需6美豆，当前余额0美豆/);
+        assert.ok(charged.err.includes("https://wink.cn/workspace?show_payment=1"));
+        assert.strictEqual(JSON.parse(charged.out).results[0].error_code, 1999);
+        if (mode === "recharge-missing-route") {
+          assert.match(charged.err, /remain_amount_info.*接口不存在.*code=10007/);
+          assert.strictEqual(balanceCalls, 1);
+          assert.strictEqual(waits.length, 0);
+        }
       } else {
         assert.strictEqual(charged.code, 0, charged.err);
         assert.strictEqual(JSON.parse(charged.out).succeeded, 1);

@@ -66,6 +66,8 @@ try {
   calls = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
   assert.ok(!fs.existsSync(path.dirname(calls[2][2])), "cleanup also runs on failure");
   const pkg = require("../package.json");
+  assert.strictEqual(pkg.name, "wink-cli");
+  assert.ok(!Object.hasOwn(pkg.bin, "wink-cli-v2"));
   assert.strictEqual(pkg.bin[pkg.name], pkg.bin["wink-cli"], "npx must select the main CLI unambiguously");
   assert.ok(!Object.hasOwn(pkg.bin, "wink"), "old command must not be installed");
   console.log("  ok install: help, validation, archive install, paths with spaces, failure and cleanup");
