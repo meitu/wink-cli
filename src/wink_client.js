@@ -118,18 +118,20 @@ function resultUrl(payload) {
   const data = dataObject(payload);
   const candidates = [];
   const push = (value) => { if (typeof value === "string" && value) candidates.push(value); };
-  push(data.result_url); // 旧协议
-  push(data.url); // 新协议（/task/query）顶层结果媒体
   const result = data.result;
   if (result && typeof result === "object" && !Array.isArray(result)) {
-    push(result.url);
+    // 优先取算法产物；顶层 data.url 可能仍指向上传的原素材。
     if (Array.isArray(result.media_info_list)) {
       for (const item of result.media_info_list) {
         if (!item || typeof item !== "object") continue;
-        push(item.media_data || item.url);
+        push(item.media_data);
+        push(item.url);
       }
     }
+    push(result.url);
   }
+  push(data.result_url); // 旧协议的明确结果字段
+  push(data.url); // 仅兼容未提供独立算法结果链接的旧响应
   for (const candidate of candidates) {
     try {
       const url = new URL(candidate);

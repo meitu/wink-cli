@@ -130,7 +130,7 @@ async function capture(fn) {
           }
           res.end(JSON.stringify({ code: 0, data: queryCount % 2
             ? { remaining_elapsed: 61000, result: { error_code: 29901, error_msg: "NOT_RESULT" } }
-            : { result: { error_code: 0 }, url: base + "/result.jpg" } }));
+            : { result: { error_code: 0, media_info_list: [{ media_data: base + "/result.jpg" }] }, url: base + "/original.jpg" } }));
         } else if (url.pathname === "/result.jpg") {
           events.push("download");
           res.setHeader("Content-Type", "image/jpeg");
@@ -181,7 +181,7 @@ async function capture(fn) {
     assert.strictEqual(submits[0].width, "1920");
     assert.strictEqual(queryCount, 4, "NOT_RESULT continues polling");
     for (const item of summary.results) {
-      assert.ok(item.result_url.startsWith(base));
+      assert.strictEqual(item.result_url, base + "/result.jpg", "return algorithm output instead of the original media URL");
       assert.ok(!Object.hasOwn(item, "output") && !Object.hasOwn(item, "bytes"));
       assert.ok(mixed.err.includes(`→ ${item.result_url}`));
     }

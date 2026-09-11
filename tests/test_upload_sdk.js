@@ -272,7 +272,20 @@ async function testQueryProtocol() {
     "NOT_RESULT msg alone also means pending",
   );
 
-  // ---- resultUrl 候选（旧 result_url / 新顶层 url / result.media_info_list）----
+  // 算法结果必须优先于可能指向原素材的顶层 url。
+  assert.strictEqual(resultUrl({ data: {
+    url: "https://cdn/original.jpg",
+    result_url: "https://cdn/legacy.jpg",
+    result: { url: "https://cdn/alternate.jpg", media_info_list: [{ media_data: "https://cdn/enhanced.jpg" }] },
+  } }), "https://cdn/enhanced.jpg");
+  assert.strictEqual(resultUrl({ data: {
+    url: "https://cdn/original.jpg",
+    result: { media_info_list: [{ media_data: "invalid", url: "https://cdn/enhanced.jpg" }] },
+  } }), "https://cdn/enhanced.jpg");
+  assert.strictEqual(resultUrl({ data: {
+    url: "https://cdn/original.jpg", result: { url: "https://cdn/enhanced.jpg" },
+  } }), "https://cdn/enhanced.jpg");
+  // 兼容只提供旧结果字段的响应。
   assert.strictEqual(resultUrl({ data: { url: "https://cdn/out.jpg" } }), "https://cdn/out.jpg");
   assert.strictEqual(
     resultUrl({ data: { result: { media_info_list: [{ media_data: "https://cdn/m.jpg" }] } } }),
