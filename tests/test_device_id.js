@@ -1,0 +1,33 @@
+"use strict";
+const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { normalizeGnum, resolveGnumSync } = require("../src/device_id");
+assert.strictEqual(normalizeGnum("9223372036854775807"), "9223372036854775807");
+assert.strictEqual(normalizeGnum(" 95250056\n"), "95250056");
+for (const value of ["C17186D98AA53EA860A4BD90F4688A05", "unit-gnum", "", "0", "-1", "1.2", "1e9", "9223372036854775808", 9007199254740992]) assert.throws(() => normalizeGnum(value), /gnum/);
+const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "wink-device-test-"));
+const dir = path.join(homeDir, ".wink-mcp-server");
+const cache = path.join(dir, "task-gnum");
+const settings = { homeDir, env: {} };
+try {
+  assert.throws(() => resolveGnumSync(settings), /尚未取得有效 gnum/);
+  assert.ok(!fs.existsSync(cache), "never generate an unregistered random ID");
+  assert.strictEqual(resolveGnumSync({ homeDir, env: { WINK_TASK_GNUM: "12345" } }), "12345");
+  assert.ok(!fs.existsSync(cache));
+  fs.mkdirSync(path.join(dir, "datareport"), { recursive: true });
+  fs.writeFileSync(cache, "C17186D98AA53EA860A4BD90F4688A05");
+  const legacy = path.join(dir, "datareport", "dataReport.json");
+  fs.writeFileSync(legacy, JSON.stringify({ gid: "95250056", gid_token: "fixture-private-token" }));
+  assert.throws(() => resolveGnumSync({ homeDir, env: { WINK_TASK_GNUM: "wrong" } }), /gnum 无效/);
+  assert.strictEqual(resolveGnumSync(settings), "95250056");
+  assert.strictEqual(fs.readFileSync(cache, "utf8").trim(), "95250056");
+  fs.unlinkSync(legacy);
+  assert.strictEqual(resolveGnumSync(settings), "95250056");
+  fs.writeFileSync(cache, "bad");
+  fs.writeFileSync(legacy, JSON.stringify({ gid: "not-a-gid" }));
+  assert.throws(() => resolveGnumSync(settings), /尚未取得有效 gnum/);
+  assert.strictEqual(fs.readFileSync(cache, "utf8"), "bad");
+  console.log("device ID: int64 validation, stable cache, legacy migration, explicit override and missing allocation passed");
+} finally { fs.rmSync(homeDir, { recursive: true, force: true }); }

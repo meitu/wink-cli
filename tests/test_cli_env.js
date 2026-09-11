@@ -25,7 +25,7 @@ async function capture(fn) {
   try {
     delete process.env.WINK_CLI_API_KEY;
     process.env.WINK_CLI_BASE_URL = "https://precliapi-winkcut.meitu.com";
-    process.env.WINK_TASK_GNUM = "env-test-device";
+    process.env.WINK_TASK_GNUM = "900000007";
     const endpoints = {
       pre: "https://precliapi-winkcut.meitu.com",
       beta: "https://betacliapi-winkcut.meitu.com",

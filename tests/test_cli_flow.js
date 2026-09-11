@@ -20,7 +20,7 @@ async function capture(fn) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wink-cli-flow-"));
   const savedKey = process.env.WINK_CLI_API_KEY;
   const savedGnum = process.env.WINK_TASK_GNUM;
-  process.env.WINK_TASK_GNUM = "offline-cli-flow";
+  process.env.WINK_TASK_GNUM = "900000006";
   let server;
   try {
     // A relogin must ignore cached/environment keys and only exchange its own once_code.
@@ -108,7 +108,7 @@ async function capture(fn) {
         } else if (url.pathname === "/subscribe/remain_amount_info") {
           events.push("balance");
           assert.strictEqual(req.headers.api_key, "test-key");
-          assert.strictEqual(url.searchParams.get("gnum"), "offline-cli-flow");
+          assert.strictEqual(url.searchParams.get("gnum"), "900000006");
           assert.strictEqual(url.searchParams.get("is_test"), "0");
           balanceCalls++;
           if (mode === "recharge-missing-route") {
@@ -122,7 +122,7 @@ async function capture(fn) {
         } else if (url.pathname === "/task/query") {
           events.push("query");
           assert.ok(url.searchParams.get("msg_id").startsWith("task-"));
-          assert.strictEqual(url.searchParams.get("gnum"), "offline-cli-flow");
+          assert.strictEqual(url.searchParams.get("gnum"), "900000006");
           queryCount++;
           if (mode === "algorithm-failure") {
             res.end(JSON.stringify({ code: 0, data: { result: { error_code: 29903, error_msg: "PROCESS_IMAGE_ERROR" } } }));

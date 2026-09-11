@@ -119,13 +119,13 @@ async function testChunkedUpload(directory) {
 
 async function testSubmitProtocol() {
   // ---- buildSubmitForm 纯函数（显式注入 gnum，不触碰真实目录）----
-  const defaults = { gnum: "unit-gnum" };
+  const defaults = { gnum: "900000001" };
   const form = buildSubmitForm("https://cdn.example/a b/视频.mp4?token=1&x=2", {}, defaults);
   assert.strictEqual(form.get("client_id"), "1189857724", "default client_id");
   assert.ok(form.get("version"), "version defaulted");
   assert.strictEqual(form.get("client_language"), "zh-Hans");
   assert.strictEqual(form.get("client_channel_id"), "mcp");
-  assert.strictEqual(form.get("gnum"), "unit-gnum");
+  assert.strictEqual(form.get("gnum"), "900000001");
   assert.strictEqual(form.get("type"), "11", "mp4 -> video task type 11 (inferred from content_type=2)");
   assert.strictEqual(form.get("ext_params"), "{}");
   assert.ok(JSON.parse(form.get("right_detail")).function_id, "right_detail JSON default");
@@ -208,31 +208,31 @@ async function testSubmitProtocol() {
 
 async function testQueryProtocol() {
   // ---- buildQueryParams（GET /task/query 查询参数，显式注入 gnum 防触碰真实目录）----
-  const defaults = { gnum: "unit-gnum" };
+  const defaults = { gnum: "900000001" };
   const params = buildQueryParams("unit-msg", {}, defaults);
   assert.strictEqual(params.msg_id, "unit-msg");
   assert.strictEqual(params.client_id, "1189857724", "default client_id");
   assert.ok(params.version, "version defaulted");
   assert.strictEqual(params.client_language, "zh-Hans");
   assert.strictEqual(params.client_channel_id, "mcp");
-  assert.strictEqual(params.gnum, "unit-gnum");
+  assert.strictEqual(params.gnum, "900000001");
   for (const key of ["country_code", "is_test"]) {
     assert.strictEqual(params[key], undefined, `${key} omitted when unset`);
   }
   assert.throws(() => buildQueryParams(""), /msg_id is required/, "empty msg_id rejected");
   assert.throws(() => buildQueryParams(null, {}, defaults), /msg_id is required/, "null msg_id rejected");
   // ---- 显式 options 覆盖 ----
-  const over = buildQueryParams("m2", { clientId: "mac-1", gnum: "g2", isTest: 1, clientLanguage: "en" }, defaults);
+  const over = buildQueryParams("m2", { clientId: "mac-1", gnum: "900000002", isTest: 1, clientLanguage: "en" }, defaults);
   assert.strictEqual(over.client_id, "mac-1");
-  assert.strictEqual(over.gnum, "g2");
+  assert.strictEqual(over.gnum, "900000002");
   assert.strictEqual(over.is_test, "1");
   assert.strictEqual(over.client_language, "en");
   // ---- 环境变量高于 defaults ----
   saveEnv("WINK_TASK_GNUM");
-  process.env.WINK_TASK_GNUM = "env-gnum";
+  process.env.WINK_TASK_GNUM = "900000003";
   try {
-    assert.strictEqual(buildQueryParams("m3", {}, defaults).gnum, "env-gnum", "env overrides defaults");
-    assert.strictEqual(buildQueryParams("m4", { gnum: "opt-gnum" }, defaults).gnum, "opt-gnum", "option overrides env");
+    assert.strictEqual(buildQueryParams("m3", {}, defaults).gnum, "900000003", "env overrides defaults");
+    assert.strictEqual(buildQueryParams("m4", { gnum: "900000004" }, defaults).gnum, "900000004", "option overrides env");
   } finally {
     restoreEnv();
   }
@@ -285,7 +285,7 @@ async function testQueryProtocol() {
 
 async function testUploadSubmitDownload(directory) {
   saveEnv("WINK_TASK_GNUM");
-  process.env.WINK_TASK_GNUM = "unit-e2e-gnum";
+  process.env.WINK_TASK_GNUM = "900000005";
   let baseUrl = "";
   const received = { submitCt: "", submitBody: "", queryUrls: [], queryCount: 0 };
   const server = http.createServer((req, res) => {
@@ -356,7 +356,7 @@ async function testUploadSubmitDownload(directory) {
     const body = new URLSearchParams(received.submitBody);
     assert.strictEqual(body.get("source_url"), `${baseUrl}/resource.mp4`);
     assert.strictEqual(body.get("content_type"), "2", "mp4 resource -> content_type=2");
-    assert.strictEqual(body.get("gnum"), "unit-e2e-gnum");
+    assert.strictEqual(body.get("gnum"), "900000005");
     assert.strictEqual(body.get("with_prepare"), "0");
     assert.ok(body.get("type") && body.get("client_id") && body.get("version"), "required fields present");
     // 轮询用 submit 返回的 msg_id，走新客户端查询协议（msg_id + 通用传参，无 task_id）
@@ -365,7 +365,7 @@ async function testUploadSubmitDownload(directory) {
     assert.strictEqual(firstQuery.searchParams.get("msg_id"), "local-msg");
     assert.ok(!firstQuery.searchParams.has("task_id"), "no legacy task_id param");
     assert.strictEqual(firstQuery.searchParams.get("client_id"), "1189857724");
-    assert.strictEqual(firstQuery.searchParams.get("gnum"), "unit-e2e-gnum");
+    assert.strictEqual(firstQuery.searchParams.get("gnum"), "900000005");
     assert.ok(firstQuery.searchParams.get("version"), "client version present");
   } finally {
     restoreEnv();

@@ -46,6 +46,7 @@ function generateOnceCode(length = 32) {
 class WinkError extends Error {}
 
 const { isInsufficientBeans } = require("./beans");
+const { normalizeGnum, resolveGnumSync } = require("./device_id");
 
 function responseOk(payload) {
   return Boolean(payload && typeof payload === "object" && payload.code === 0);
@@ -225,7 +226,7 @@ class WinkClient {
    */
   async submit(resourceUrl, options = {}) {
     if (!resourceUrl || typeof resourceUrl !== "string") throw new WinkError("resource_url is required");
-    const form = buildSubmitForm(resourceUrl, options, taskDefaults());
+    const form = buildSubmitForm(resourceUrl, options, taskDefaults(options));
     const headers = { "Content-Type": "application/x-www-form-urlencoded" };
     const accessToken = options.accessToken || this.accessToken;
     if (accessToken) headers["Access-Token"] = accessToken;
@@ -246,7 +247,7 @@ class WinkClient {
    *   isTest 覆盖 + { accessToken }（Access-Token 头）
    */
   async query(msgId, options = {}) {
-    const params = buildQueryParams(msgId, options, taskDefaults());
+    const params = buildQueryParams(msgId, options, taskDefaults(options));
     const headers = {};
     const accessToken = options.accessToken || this.accessToken;
     if (accessToken) headers["Access-Token"] = accessToken;
@@ -261,7 +262,7 @@ class WinkClient {
     const headers = {};
     const accessToken = options.accessToken || this.accessToken;
     if (accessToken) headers["Access-Token"] = accessToken;
-    return this.request("GET", "/subscribe/remain_amount_info", clientIdentityParams(options, taskDefaults()), {
+    return this.request("GET", "/subscribe/remain_amount_info", clientIdentityParams(options, taskDefaults(options)), {
       headers,
       requestTimeout: options.requestTimeout,
     });
@@ -278,7 +279,7 @@ class WinkClient {
    *   countryCode/isTest 覆盖 + { accessToken }（Access-Token 头） }
    */
   async aiTypeConfig(options = {}) {
-    const params = buildAiTypeConfigParams(options, taskDefaults());
+    const params = buildAiTypeConfigParams(options, taskDefaults(options));
     const headers = {};
     const accessToken = options.accessToken || this.accessToken;
     if (accessToken) headers["Access-Token"] = accessToken;
@@ -407,32 +408,9 @@ function inferTaskType(contentType) {
   return undefined;
 }
 
-/**
- * gnum：显式 options/env > 首次生成的稳定本地设备标识。
- * 沿用 ~/.wink-mcp-server/task-gnum 路径以兼容已有 CLI 安装。任何一步失败都
- * 静默降级到下一步，全部不可用时返回空串（字段随之省略）。
- */
-function resolveGnumSync() {
-  if (process.env.WINK_TASK_GNUM) return process.env.WINK_TASK_GNUM;
-  try {
-    const dir = path.join(os.homedir(), ".wink-mcp-server");
-    const file = path.join(dir, "task-gnum");
-    if (fs.existsSync(file)) {
-      const cached = fs.readFileSync(file, "utf8").trim();
-      if (cached) return cached;
-    }
-    const fresh = crypto.randomBytes(16).toString("hex").toUpperCase();
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, fresh, { mode: 0o600 });
-    return fresh;
-  } catch (_) {
-    return "";
-  }
-}
-
 /** submit/query 的非调用方显式默认值（gnum/version 走运行期解析，便于 env/缓存）。 */
-function taskDefaults() {
-  return { gnum: resolveGnumSync(), version: SERVER_VERSION };
+function taskDefaults(options = {}) {
+  return { gnum: options.gnum !== undefined ? normalizeGnum(options.gnum) : resolveGnumSync(), version: SERVER_VERSION };
 }
 
 /**
@@ -454,7 +432,8 @@ function clientIdentityParams(options = {}, defaults = {}, envVar = (name) => pr
   put("client_language", first(o.clientLanguage, envVar("WINK_TASK_LANGUAGE"), d.clientLanguage, "zh-Hans"));
   // 沿用服务端已使用的渠道值，纯 CLI 清理不改变投递协议。
   put("client_channel_id", first(o.channelId, envVar("WINK_TASK_CHANNEL_ID"), d.channelId, "mcp"));
-  put("gnum", first(o.gnum, envVar("WINK_TASK_GNUM"), d.gnum));
+  const gnum = first(o.gnum, envVar("WINK_TASK_GNUM"), d.gnum);
+  if (gnum !== undefined && gnum !== null) put("gnum", normalizeGnum(gnum));
   put("country_code", first(o.countryCode, envVar("WINK_TASK_COUNTRY_CODE"), d.countryCode));
   put("is_test", first(o.isTest, envVar("WINK_TASK_IS_TEST"), d.isTest));
   return params;

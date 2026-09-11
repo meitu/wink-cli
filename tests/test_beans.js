@@ -65,7 +65,7 @@ const { isInsufficientBeans, createRechargeHandler, PAYMENT_URLS } = require("..
       assert.strictEqual(req.headers.api_key, "fixture-key");
       assert.strictEqual(req.headers["access-token"], "fixture-account-token");
       assert.strictEqual(url.searchParams.get("client_id"), "1189857724");
-      assert.strictEqual(url.searchParams.get("gnum"), "fixture-device");
+      assert.strictEqual(url.searchParams.get("gnum"), "900000008");
       assert.strictEqual(url.searchParams.get("version"), "1.0 测试");
       res.end(JSON.stringify({ code: 0, data: { total_amount: 20 } }));
     } else if (url.pathname === "/task/submit") {
@@ -81,7 +81,7 @@ const { isInsufficientBeans, createRechargeHandler, PAYMENT_URLS } = require("..
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const client = new WinkClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: "fixture-key", accessToken: "fixture-account-token", log: () => {} });
-  const options = { gnum: "fixture-device", version: "1.0 测试", onInsufficientBeans: async () => { callbacks++; return true; } };
+  const options = { gnum: "900000008", version: "1.0 测试", onInsufficientBeans: async () => { callbacks++; return true; } };
   try {
     assert.strictEqual((await client.remainAmountInfo(options)).data.total_amount, 20);
     assert.strictEqual(balances, 1);

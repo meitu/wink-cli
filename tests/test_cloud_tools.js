@@ -18,6 +18,8 @@ async function capture(fn) {
   finally { process.stdout.write = stdout; process.stderr.write = stderr; }
 }
 (async () => {
+  const savedGnum = process.env.WINK_TASK_GNUM;
+  process.env.WINK_TASK_GNUM = "900000009";
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wink-all-tools-"));
   const image = path.join(dir, "input.jpg"), video = path.join(dir, "input.mp4"), reference = path.join(dir, "reference.png");
   for (const file of [image, video, reference]) fs.writeFileSync(file, "media");
@@ -108,5 +110,8 @@ async function capture(fn) {
     }
     assert.strictEqual(checkAiTypeSupport(limited, { type: 10, contentType: 1, extension: "jpg", size: 99, width: 40, height: 40 }).ok, true);
     console.log(`cloud tools: ${count} CF mappings passed through config/upload/submit/query/result URL; parameter and unavailable-config checks passed`);
-  } finally { await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    if (savedGnum === undefined) delete process.env.WINK_TASK_GNUM;
+    else process.env.WINK_TASK_GNUM = savedGnum;
+    await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
