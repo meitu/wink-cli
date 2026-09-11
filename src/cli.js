@@ -19,7 +19,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createHash } = require("crypto");
-const { spawn, execFileSync } = require("child_process");
+const { execFileSync } = require("child_process");
+const { openBrowser } = require("./open_browser");
 const { imageSize } = require("image-size");
 const { readMp4Metadata } = require("./mp4_metadata");
 const { createFileProgress } = require("./cli_progress");
@@ -88,7 +89,6 @@ const MAIN_HELP = [
   "",
   "全局选项:",
   "  -h, --help                显示帮助（本页或子命令帮助）",
-  "  --env <env>              运行环境：pre / beta / release，默认 release",
   "",
   "功能命令:",
   ...Object.entries(COMMANDS).map(([command, tool]) => `  ${command.padEnd(24)}${tool.name}（云端工具箱）`),
@@ -119,7 +119,6 @@ function toolHelp(command) {
     ...(tool.levels.length > 1 ? ["档位 (--level):", ...tool.levels.map((item) => `  ${String(item.level).padEnd(4)}${item.name}${item.level === tool.defaultLevel ? "（默认）" : ""}${!item.video ? "  — 仅图片" : !item.image ? "  — 仅视频" : ""}`)] : [`支持媒体: ${tool.levels[0].image ? "图片" : ""}${tool.levels[0].image && tool.levels[0].video ? "、" : ""}${tool.levels[0].video ? "视频" : ""}（自动选择唯一档位）`]),
     "",
     "工具选项:",
-    "  --env <env>                 运行环境：pre / beta / release，默认 release",
     ...(tool.levels.length > 1 ? ["  --level <n>                  档位编号（默认 " + tool.defaultLevel + "）"] : []),
     "  --input <path>               输入媒体绝对路径，支持文件夹、视频图片路径（多个以英文“,”号隔开，必填）",
     "",
@@ -133,13 +132,12 @@ function toolHelp(command) {
     "  --force                      兼容旧命令，已忽略；不再下载文件",
     "  --interval <n>               轮询间隔秒数，默认 " + POLL_INTERVAL_SECONDS,
     "  --timeout <n>                单任务超时秒数，默认 " + POLL_TIMEOUT_SECONDS,
-    "  --base-url <url>             自定义联调地址，不可与 --env 同时使用；上传使用正式通道",
+    "  --base-url <url>             自定义联调地址；上传使用正式通道",
     "  --relogin                    忽略本地缓存，重新走 SSO 授权登录",
     "  --json                       以 JSON 输出结果汇总（进度信息走 stderr）",
     "  -h, --help                   显示本帮助",
     "",
     "默认值:",
-    "  环境: release（" + ENVIRONMENTS.release + "）",
     "  结果: 仅显示下载链接，不自动下载",
   ];
   return lines.join("\n");
@@ -327,22 +325,6 @@ function writeCredential(apiKey, baseUrl) {
     fs.writeFileSync(credentialFile(baseUrl), `${apiKey}\n`, { mode: 0o600 });
   } catch (_) { /* 写不进就只在本次会话使用 */ }
 }
-
-function openBrowser(url) {
-  try {
-    let command = "xdg-open";
-    let args = [url];
-    if (process.platform === "darwin") command = "open";
-    else if (process.platform === "win32") {
-      command = "cmd";
-      args = ["/c", "start", "", url];
-    }
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
-    child.on("error", () => {});
-    child.unref();
-  } catch (_) { /* 打不开时用户可手动打开上面打印的链接 */ }
-}
-
 
 function out(line = "") {
   process.stdout.write(`${line}\n`);
