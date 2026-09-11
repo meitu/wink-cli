@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit"
+  short_description: "提交当前会话改动并自动追加 AI 署名尾注；备注里提到的文件若有改动也一起提交，并从备注中剔除文件名"
+  default_prompt: "Use $commit 提交当前会话改动；如果备注中提到文件名，也把这些已改动文件一起提交，并清洗最终提交备注。自动在 commit message 末尾追加 AI Co-Authored-By 署名。"
