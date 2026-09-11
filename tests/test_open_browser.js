@@ -1,6 +1,7 @@
 "use strict";
 const assert = require("assert");
 const { EventEmitter } = require("events");
+const { spawnSync } = require("child_process");
 const { openBrowser } = require("../src/open_browser");
 const { WinkClient } = require("../src/wink_client");
 const { PAYMENT_URLS } = require("../src/beans");
@@ -17,7 +18,7 @@ for (const platform of ["win32", "darwin", "linux"]) {
       called++;
       assert.ok(!options.shell, "URLs must not go through a command shell");
       assert.strictEqual(options.stdio, "ignore");
-      assert.strictEqual(options.detached, true);
+      assert.strictEqual(options.detached, platform !== "win32");
       if (platform === "win32") {
         assert.strictEqual(command, "powershell.exe");
         assert.deepStrictEqual(args.slice(0, 3), ["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
@@ -45,6 +46,23 @@ for (const platform of ["win32", "darwin", "linux"]) {
   }
 }
 assert.strictEqual(process.env.WINK_CLI_BROWSER_URL, previous, "do not mutate the parent environment");
+if (process.platform === "win32") {
+  // Exercise real PowerShell startup without opening a browser. DETACHED_PROCESS
+  // used to return exit 0 while silently skipping even this harmless script.
+  openBrowser(auth.auth_url, { spawnProcess(command, args, options) {
+    const probeArgs = [...args];
+    probeArgs[3] = Buffer.from("Write-Output wink-browser-launch-probe", "utf16le").toString("base64");
+    const result = spawnSync(command, probeArgs, {
+      ...options, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 15000,
+    });
+    assert.ifError(result.error);
+    assert.strictEqual(result.status, 0);
+    assert.match(result.stdout, /wink-browser-launch-probe/);
+    const child = new EventEmitter();
+    child.unref = () => {};
+    return child;
+  }, onError: error => { throw error; } });
+}
 const failures = [];
 openBrowser(auth.auth_url, {
   spawnProcess() { throw new Error("fixture: unavailable"); },

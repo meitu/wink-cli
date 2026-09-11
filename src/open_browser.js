@@ -26,6 +26,9 @@ function openBrowser(url, { platform = process.platform, spawnProcess = spawn,
       args = ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
       options.env = { ...process.env, WINK_CLI_BROWSER_URL: url };
       options.windowsHide = true;
+      // Windows PowerShell can exit successfully without executing its script
+      // when started with DETACHED_PROCESS. Hide the helper without detaching it.
+      options.detached = false;
     }
     const child = spawnProcess(command, args, options);
     child.on("error", reportFailure);
