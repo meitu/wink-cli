@@ -4,7 +4,9 @@
  * wink-connector —— WorkBuddy 连接器（CLI+Skill 方案）的壳脚本命令层。
  *
  * 本文件只「包装」既有能力，不改动 src/cli.js 的任何业务逻辑：
- *   init   -> npm install -g wink-cli      （由 cli.json 的 init 直接执行）
+ *   init   -> npx -y github:meitu/wink-cli install   （由 cli.json 的 init 直接执行）
+ *            注意：公网 npm 上的 `wink-cli` 是第三方同名包（Simple CLI, 2023），
+ *            不可使用 `npm install -g wink-cli`，否则会装错包。
  *   auth   -> wink-connector login            （打印授权链接并轮询换取 api_key）
  *   status -> wink-connector status           （只读检查，无副作用）
  *   unAuth -> wink-connector logout           （清理本地凭证）
