@@ -1,9 +1,9 @@
 "use strict";
 
 const PAYMENT_URLS = Object.freeze({
-  pre: "https://pre.wink.cn/workspace?show_payment=1",
-  beta: "https://beta.wink.cn/workspace?show_payment=1",
-  release: "https://wink.cn/workspace?show_payment=1",
+  pre: "https://pre.wink.cn/workspace?showPayment=1",
+  beta: "https://beta.wink.cn/workspace?showPayment=1",
+  release: "https://wink.cn/workspace?showPayment=1",
 });
 const POLL_MS = 5000;
 const TIMEOUT_MS = 300000;

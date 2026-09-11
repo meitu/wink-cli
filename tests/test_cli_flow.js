@@ -213,7 +213,7 @@ async function capture(fn) {
         assert.strictEqual(rechargeSubmits, 1);
         assert.ok(!events.includes("query"));
         assert.match(charged.err, /需6美豆，当前余额0美豆/);
-        assert.ok(charged.err.includes("https://wink.cn/workspace?show_payment=1"));
+        assert.ok(charged.err.includes("https://wink.cn/workspace?showPayment=1"));
         assert.strictEqual(JSON.parse(charged.out).results[0].error_code, 1999);
         if (mode === "recharge-missing-route") {
           assert.match(charged.err, /remain_amount_info.*接口不存在.*code=10007/);
@@ -223,7 +223,7 @@ async function capture(fn) {
       } else {
         assert.strictEqual(charged.code, 0, charged.err);
         assert.strictEqual(JSON.parse(charged.out).succeeded, 1);
-        assert.deepStrictEqual(opened, ["https://wink.cn/workspace?show_payment=1"]);
+        assert.deepStrictEqual(opened, ["https://wink.cn/workspace?showPayment=1"]);
         assert.deepStrictEqual(events.slice(0, 8), ["config", "upload", "submit", "balance", "open-payment", "balance", "balance", "submit"]);
         assert.strictEqual(balanceCalls, 3);
         assert.strictEqual(rechargeSubmits, 2);
