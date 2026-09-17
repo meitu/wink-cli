@@ -119,7 +119,8 @@ function resultUrl(payload) {
   const candidates = [];
   const push = (value) => { if (typeof value === "string" && value) candidates.push(value); };
   const result = data.result;
-  if (result && typeof result === "object" && !Array.isArray(result)) {
+  const hasResult = result && typeof result === "object" && !Array.isArray(result);
+  if (hasResult) {
     // 优先取算法产物；顶层 data.url 可能仍指向上传的原素材。
     if (Array.isArray(result.media_info_list)) {
       for (const item of result.media_info_list) {
@@ -131,7 +132,7 @@ function resultUrl(payload) {
     push(result.url);
   }
   push(data.result_url); // 旧协议的明确结果字段
-  push(data.url); // 仅兼容未提供独立算法结果链接的旧响应
+  if (!hasResult) push(data.url); // 仅旧协议回退；新协议 data.url 是原素材，不能冒充算法产物。
   for (const candidate of candidates) {
     try {
       const url = new URL(candidate);
@@ -320,7 +321,7 @@ class WinkClient {
       const queried = await this.query(taskId, options);
       if (!responseOk(queried)) return queried;
       const taskData = dataObject(queried);
-      const state = taskState(taskData);
+      const state = taskState(taskData, options);
       const extra = [];
       if (state.status) extra.push(`status=${state.status}`);
       if (taskData.remaining_elapsed != null) extra.push(`remaining=${taskData.remaining_elapsed}`);
@@ -589,45 +590,48 @@ function checkAiTypeSupport(payload, input = {}) {
 
 /**
  * 由 /task/query 应答的 data 推断任务所处阶段。新协议（2026-09 起）不再返回
- * data.status/process：完成态以 data.result 块是否出现为准（error_code===0 成功、
- * 非 0 失败、缺失 error_code 视作成功）；顶层 data.error_code 非 0 视为失败；
- * 旧协议 data.status 字段仍优先兼容。
+ * data.status/process：明确错误优先于旧 status；29901/NOT_RESULT 继续轮询。
+ * 去水印还需检查是否检测到目标，与官网最近任务的失败展示规则一致。
  * @returns {{ phase: "running"|"finish"|"fail"|"unknown", status?: string, error_code?: number, msg?: string, reason?: string }}
  */
-function taskState(data) {
+function taskState(data, options = {}) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return { phase: "unknown" };
-  // 旧协议：显式 status
-  if (typeof data.status === "string" && data.status) {
-    const status = String(data.status).toLowerCase();
-    if (status === "finish" || status === "done" || status === "success" || status === "completed") {
-      return { phase: "finish", status: data.status };
-    }
-    if (["fail", "failed", "error", "cancel", "cancelled", "canceled"].includes(status)) {
-      return {
-        phase: "fail",
-        status: data.status,
-        reason: data.error_msg || data.message || (data.result && data.result.error_msg) || undefined,
-      };
-    }
-    return { phase: "running", status: data.status };
-  }
   // 顶层 error_code（部分后端直接在 data 上带）
   const topCode = data.error_code == null ? Number.NaN : Number(data.error_code);
   if (!Number.isNaN(topCode) && topCode !== 0) {
-    return { phase: "fail", reason: data.error_msg || `error_code=${topCode}` };
+    return { phase: "fail", error_code: topCode, reason: data.error_msg || `error_code=${topCode}` };
   }
-  // 新协议：data.result 块出现即终态
-  const result = data.result;
-  if (result && typeof result === "object" && !Array.isArray(result)) {
-    const resultCode = result.error_code == null ? Number.NaN : Number(result.error_code);
-    // 29901 / error_msg="NOT_RESULT" 表示「结果尚未产出」，任务仍在进行中（pre 实测，
-    // 处理中 result 块已存在但 media_info_list 为 null）；不能当成失败。
-    if (resultCode === 29901 || String(result.error_msg || "").toUpperCase() === "NOT_RESULT") {
-      return { phase: "running", error_code: resultCode, msg: result.error_msg };
+  const result = data.result && typeof data.result === "object" && !Array.isArray(data.result) ? data.result : null;
+  const resultCode = result?.error_code == null ? Number.NaN : Number(result.error_code);
+  if (!Number.isNaN(resultCode) && resultCode !== 0 && resultCode !== 29901) {
+    return { phase: "fail", error_code: resultCode, reason: result.error_msg || `error_code=${resultCode}` };
+  }
+  const status = typeof data.status === "string" ? data.status.toLowerCase() : "";
+  if (["fail", "failed", "error", "cancel", "cancelled", "canceled"].includes(status)) {
+    return { phase: "fail", status: data.status, reason: data.error_msg || data.message || result?.error_msg || undefined };
+  }
+  if (resultCode === 29901 || String(result?.error_msg || "").toUpperCase() === "NOT_RESULT") {
+    return { phase: "running", error_code: resultCode, msg: result?.error_msg };
+  }
+  if (resultCode === 0) {
+    // website/shared/remove-watermark.ts：算法返回成功但未检测到水印/文字，也按失败交付。
+    const type = Number(options.taskType ?? data.type);
+    const watermark = [3, 94, 8, 95].includes(type);
+    const text = [43, 98, 42, 99, 18, 100, 21, 101].includes(type);
+    if (watermark || text) {
+      const parameter = result.parameter || {};
+      const detected = value => value === true || value === 1 || value === "1" || value === "true";
+      const found = watermark
+        ? detected(parameter.exist_watermark ?? parameter.existWatermark) || detected(parameter.has_watermask ?? parameter.hasWatermask)
+        : detected(parameter.exist_text ?? parameter.existText);
+      if (!found) return { phase: "fail", reason: watermark ? "未检测到水印，未完成去水印处理" : "未检测到文字，未完成去文字处理" };
     }
-    if (!Number.isNaN(resultCode) && resultCode !== 0) {
-      return { phase: "fail", reason: result.error_msg || `error_code=${resultCode}` };
-    }
+  }
+  // 旧协议状态只能在排除明确错误后使用。
+  if (status) {
+    return { phase: ["finish", "done", "success", "completed"].includes(status) ? "finish" : "running", status: data.status };
+  }
+  if (result) {
     return {
       phase: "finish",
       error_code: Number.isNaN(resultCode) ? undefined : resultCode,

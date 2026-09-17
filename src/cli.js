@@ -589,7 +589,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
           if (phase === "running") fileProgress.processing(remainingMs);
         },
       });
-      const state = taskState(dataObject(finalPayload));
+      const state = taskState(dataObject(finalPayload), { taskType: info.taskType });
       if (!responseOk(finalPayload) || state.phase !== "finish") {
         const reason = !responseOk(finalPayload) ? serverError(finalPayload) : state.reason || "任务未完成";
         const data = dataObject(finalPayload);

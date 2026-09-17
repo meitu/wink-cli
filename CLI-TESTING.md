@@ -64,6 +64,8 @@ AI动漫的风格和效果 ID 必须与对应物料一致；示例的 `xinhaiche
 
 ## 准备
 
+去水印结果判定回归见 `tests/test_watermark_result.js`：覆盖未检测到水印/文字、旧成功状态与算法错误冲突、新协议缺少结果链接、旧协议兼容。1.11.1 起这些失败不能返回 `ok=true` 或把原素材链接作为处理结果。
+
 - Node.js 18 或以上，并在项目根目录执行 `npm install`。
 - 图片优先通过纯 JavaScript 读取文件头获取宽高。MP4/MOV（以及同容器的 M4V/3GP）优先直接解析容器元信息获取宽高、时长，不需要 ffprobe，也不增加二进制依赖。其他格式或解析失败时回退到可选的 ffprobe；ffprobe 未安装时直接上传、投递。可以通过 `WINK_FFPROBE_PATH` 指定可执行文件的绝对路径。
 - 默认环境为 `release`，通过 `--env pre|beta|release` 切换；该参数可以放在功能命令之前或之后。

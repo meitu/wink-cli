@@ -30,7 +30,7 @@ async function capture(fn) {
     res.setHeader("Content-Type", "application/json");
     if (req.url.startsWith("/task/ai_type_config")) return res.end(JSON.stringify({ code: 0, data: configs }));
     if (req.url === "/task/submit") { submitted = Object.fromEntries(new URLSearchParams(body)); return res.end(JSON.stringify({ code: 0, data: { msg_id: "mock-task" } })); }
-    if (req.url.startsWith("/task/query")) return res.end(JSON.stringify({ code: 0, data: { result: { error_code: 0 }, url: base + "/result.jpg" } }));
+    if (req.url.startsWith("/task/query")) return res.end(JSON.stringify({ code: 0, data: { result: { error_code: 0, parameter: { exist_watermark: true }, media_info_list: [{ media_data: base + "/result.jpg" }] }, url: base + "/original.jpg" } }));
     if (req.url === "/result.jpg") return res.end("processed");
     res.statusCode = 404; res.end();
   });
