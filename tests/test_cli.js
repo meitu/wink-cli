@@ -42,7 +42,7 @@ async function capture(fn) {
 
 async function testMainHelp() {
   const expected = cli.MAIN_HELP;
-  const names = ["picture_quality", "resolution_repair", "remove_watermark", "denoise", "color_enhance", "color_unite", "cartoon", "night_scene", "video_frame", "ai_translation", "ai_beauty", "video_defogging", "old_photo"];
+  const names = ["picture_quality", "video_repair", "resolution_repair", "remove_watermark", "denoise", "color_enhance", "color_unite", "cartoon", "night_scene", "video_frame", "ai_translation", "ai_beauty", "video_defogging", "old_photo"];
   assert.strictEqual(Object.keys(cli.COMMANDS).length, names.length);
   for (const name of names) {
     assert.ok(expected.includes(name));

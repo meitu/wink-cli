@@ -522,6 +522,7 @@ function buildAiTypeConfigParams(options = {}, defaults = {}) {
  * @param {object|Array} payload aiTypeConfig() 的完整应答（取 data 数组）或直接传数组
  * @param {object} input { contentType: "1"|"2"（用户输入的媒体类型，必填）,
  *   type?: string（11/12 投递值域或 1/2 配置值域）, durationSeconds?: number（视频时长，秒）,
+ *   configMatch?: { task_type: number, func_id: number }（按功能标识取运行时算法 type）,
  *   isVip?: boolean }
  * @returns {{ ok: boolean, config?: object, reason?: string }}
  *   ok=false 时 reason 为可直接展示给用户的中文提示。
@@ -531,7 +532,16 @@ function checkAiTypeSupport(payload, input = {}) {
   if (!list.length) return { ok: false, reason: "获取 AI 功能配置列表为空，服务端可能未配置该功能" };
   const contentType = input.contentType != null ? String(input.contentType) : "";
   let config = null;
-  if (input.type != null) {
+  if (input.configMatch) {
+    // 全能修复按官网功能标识选配置，不能退回名称相近的画质修复或旧普通档。
+    config = list.find(item => item && String(item.task_type) === String(input.configMatch.task_type)
+      && String(item.func_id) === String(input.configMatch.func_id) && String(item.content_type) === contentType
+      && Number(item.is_local_process || 0) === 0) || null;
+    if (!config) return { ok: false, reason: `当前环境未开放该云处理档位（task_type=${input.configMatch.task_type}，func_id=${input.configMatch.func_id}，content_type=${contentType}）` };
+    if (!Number.isInteger(Number(config.type)) || Number(config.type) <= 0) {
+      return { ok: false, reason: `云处理档位 func_id=${input.configMatch.func_id} 缺少有效算法 type，未投递` };
+    }
+  } else if (input.type != null) {
     const matches = list.filter(item => item && String(item.type) === String(input.type));
     config = matches.find(item => (!contentType || String(item.content_type) === contentType) && Number(item.is_local_process || 0) === 0
       && (input.configValue == null || String(item.ext_value) === String(input.configValue))) || null;

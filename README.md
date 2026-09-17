@@ -45,6 +45,7 @@ ffprobe 为可选依赖。图片、常见 MP4/MOV 优先直接读取元信息；
 | 命令 | 功能 |
 |---|---|
 | `picture_quality` | 画质修复 |
+| `video_repair` | 视频全能修复（Pro 单档） |
 | `resolution_repair` | 分辨率修复 |
 | `remove_watermark` | 消除水印 |
 | `denoise` | 降噪 |
@@ -59,6 +60,8 @@ ffprobe 为可选依赖。图片、常见 MP4/MOV 优先直接读取元信息；
 | `old_photo` | 老照片修复 |
 
 单档位功能可省略 `--level`。档位、媒体限制及专属参数通过 `wink-cli <命令> --help` 查看。
+
+视频全能修复自 1.11.0 起使用 `wink-cli video_repair --input "/absolute/path/video.mp4" --json`。按官网 Pro 功能标识从服务端配置选择算法，默认开启抖动检测，每个视频投递一个任务；不将专业级画质修复或 AIGC 精修代作全能修复，也不自动裁短超时视频。
 
 ```sh
 ./wink-cli denoise --env pre --input "/absolute/path/photo.jpg"

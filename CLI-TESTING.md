@@ -1,10 +1,11 @@
 # Wink CLI 命令行测试
 
-已接入 [CF 功能表](https://cf.meitu.com/confluence/pages/viewpage.action?pageId=715632845)（2026-09-10，版本 5）的全部 13 个命令。表中的单档位功能直接省略 `--level`，也兼容显式 `--level 1`。
+已接入 [CF 功能表](https://cf.meitu.com/confluence/pages/viewpage.action?pageId=715632845)（2026-09-10，版本 5）的全部 13 个命令，并在 1.11.0 中按 website 当前实现新增视频全能修复，共 14 个命令。单档位功能直接省略 `--level`，也兼容显式 `--level 1`。
 
 | 命令 | 功能 | 档位/专属参数 | 图片 type | 视频 type |
 |---|---|---|---|---|
 | `picture_quality` | 画质修复 | 默认 2，新增 11 专业级、12 AIGC精修 | 2/12/24/55/72/73/177/183 | 1/11/13/54/176/182 |
+| `video_repair` | 视频全能修复 | Pro 单档；无需额外参数 | — | 运行时配置，正式环境当前 123 |
 | `resolution_repair` | 分辨率修复 | `--sr-mode 0..4`，默认 1（1080p） | 6 | 5 |
 | `remove_watermark` | 消除水印 | 1 自动去印（默认）、2 AI去水印 | 8/95 | 3/94 |
 | `denoise` | 降噪 | `--strength low/median/high`，默认 low | 10 | 9 |
@@ -44,6 +45,22 @@ AI动漫的风格和效果 ID 必须与对应物料一致；示例的 `xinhaiche
 ```
 
 老照片默认开启 `basic_repair` 和 `super_resolution`，其余开关关闭；`--workflow-params` 可提供完整对象覆盖。更多参数见 `wink-cli <命令> --help`。
+
+## 视频全能修复 Pro
+
+```sh
+./wink-cli video_repair --input "/absolute/path/video.mp4" --json
+```
+
+依据为 website 的 `src/services/workspace/features/definitions/video-repair/{definition,ticket}.ts`、`src/hooks/workspace/useLimitConfig.ts` 及通用请求序列化；2026-09-17 另只读核对了正式环境 `/task/ai_type_config`。
+
+- 配置精确匹配 `task_type=2`、`func_id=65591`、`content_type=2` 的云处理项，再取该项的 `type` 投递。当前正式环境为 123；未开放配置时停止，不回退到旧普通档 22、图片档 124 或 `picture_quality` 的 176/182。
+- `type_params` 是 JSON 字符串 `{"enable_shake":"1"}`，表示开启抖动检测。官网没有可调强度、目标帧率、分辨率或组合开关，CLI 也不增加这些选项。
+- `right_detail` 是 JSON 字符串 `{"source":"1","touch_type":"4","function_id":"655","material_id":"65511"}`；65591 是匹配服务端配置的功能项 ID，不能拿来替代票据中的 655。
+- 只处理完整视频，每个视频一次上传、投递和查询。当前 CLI 按能力配置的普通用户时长上限校验；当日正式配置为 1–60 秒。服务端另有会员上限，但 CLI 尚未解析会员身份，不自动放宽。官网的裁剪交互和图片结果页智能校色不属于本命令。
+- 保留 CLI `/task/submit`、`/task/query` 协议及 `with_prepare=0`；不搬用网页 `/meitu_ai/delivery.json` 的预处理查询协议，也不虚构 `right_detail.url`。结果仍只返回链接。
+
+`tests/test_video_repair.js` 使用模拟接口验证运行时算法映射、投递参数、单任务流程和异常拦截；真实云处理效果尚未验收。
 
 ## 准备
 

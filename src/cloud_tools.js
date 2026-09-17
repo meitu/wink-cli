@@ -25,6 +25,11 @@ const REMOVE_WATERMARK_LEVELS = [
 const single = (name, image, video, extra = {}) => ({ name, defaultLevel: 1, levels: [{ level: 1, name, image, video }], ...extra });
 const COMMANDS = Object.freeze({
   picture_quality: { name: "画质修复", defaultLevel: 2, levels: PICTURE_QUALITY_LEVELS },
+  // 官网视频全能修复只有 Pro；算法 type 由功能标识匹配运行时配置后确定。
+  video_repair: { name: "视频全能修复", defaultLevel: 1, levels: [{ level: 1, name: "Pro", video: "123" }],
+    configMatch: { task_type: 2, func_id: 65591 },
+    rightDetail: { source: "1", touch_type: "4", function_id: "655", material_id: "65511" },
+    options: ["Pro 单档，默认开启抖动检测；处理完整视频，不额外串联补帧、去水印等任务"] },
   resolution_repair: single("分辨率修复", "6", "5", { options: ["--sr-mode <n>                分辨率：0=720p / 1=1080p / 2=2K / 3=4K / 4=8K，默认 1"] }),
   remove_watermark: { name: "消除水印", defaultLevel: 1, levels: REMOVE_WATERMARK_LEVELS },
   denoise: single("降噪", "10", "9", { options: ["--strength <value>           low / median / high，默认 low"] }),
@@ -63,6 +68,8 @@ function prepareTool(command, flags) {
     } catch (error) { throw new WinkError(`--${key} 无法读取 JSON 对象：${error.message}`); }
   };
   const choice = (key, values, fallback) => { const value = get(key, fallback); if (!values.includes(value)) throw new WinkError(`--${key} 可用值：${values.join(" / ")}`); return value; };
+  // 与 website/video-repair/ticket.ts 一致；1 表示开启抖动检测，不是强制防抖效果。
+  if (command === "video_repair") params.enable_shake = "1";
   if (command === "resolution_repair") {
     configValue = choice("sr-mode", ["0", "1", "2", "3", "4"], "1"); params.sr_mode = Number(configValue);
   }

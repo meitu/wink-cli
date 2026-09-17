@@ -532,6 +532,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     let selectedConfig;
     if (configPayload) {
       const check = checkAiTypeSupport(configPayload, { type: info.taskType, contentType, durationSeconds: media.duration,
+        configMatch: tool.configMatch,
         configValue: command === "cartoon" && contentType === "1" ? undefined : prepared.configValue, strictType: true,
         ...media, extension: path.extname(file).slice(1).toLowerCase() });
       selectedConfig = check.config;
@@ -541,6 +542,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         results.push({ file, ok: false, reason: check.reason });
         continue;
       }
+      if (tool.configMatch) info.taskType = String(selectedConfig.type);
     }
 
     const fileProgress = createFileProgress(file);
@@ -573,7 +575,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
           ...(command === "cartoon" && contentType === "1" ? { preview: 1 } : {}),
           ...(referenceUpload ? { cover_pic: referenceUpload.resource_url } : {}) }),
         ...(referenceUpload ? { coverPic: referenceUpload.resource_url } : {}),
-        rightDetail: JSON.stringify({ source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
+        // 全能修复的票据功能/物料 ID 与配置 func_id 不同，沿用官网明确的权益标识。
+        rightDetail: JSON.stringify(tool.rightDetail || { source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
         interval,
         timeout,
         onInsufficientBeans: async rejection => {
