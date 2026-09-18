@@ -292,6 +292,21 @@ class WinkClient {
     });
   }
 
+  /** 获取 AI 美容风格的一页数据，沿用 CLI 网关的 api_key 和客户端公共参数。 */
+  async aiBeautyList(options = {}) {
+    const params = clientIdentityParams(options, taskDefaults(options));
+    params.count = String(options.count ?? 50);
+    if (options.cursor) params.cursor = String(options.cursor);
+    const headers = {};
+    const accessToken = options.accessToken || this.accessToken;
+    if (accessToken) headers["Access-Token"] = accessToken;
+    return this.request("GET", "/material/ai_beauty/list", params, {
+      headers,
+      requireKey: true,
+      requestTimeout: options.requestTimeout,
+    });
+  }
+
   /**
    * Submit and poll until the task finishes or fails.
    * @returns the final task payload

@@ -25,6 +25,7 @@ const { imageSize } = require("image-size");
 const { readMp4Metadata } = require("./mp4_metadata");
 const { createFileProgress } = require("./cli_progress");
 const { createRechargeHandler } = require("./beans");
+const { fetchBeautyStyles, selectBeautyStyle, buildBeautySubmission, formatBeautyStyles } = require("./ai_beauty");
 const {
   WinkClient,
   WinkError,
@@ -115,16 +116,23 @@ function toolHelp(command) {
     "",
     "用法:",
     `  wink-cli ${command} --input <path> [选项]`,
+    ...(command === "ai_beauty" ? ["  wink-cli ai_beauty --list-styles [--json]"] : []),
     "",
     ...(tool.levels.length > 1 ? ["档位 (--level):", ...tool.levels.map((item) => `  ${String(item.level).padEnd(4)}${item.name}${item.level === tool.defaultLevel ? "（默认）" : ""}${!item.video ? "  — 仅图片" : !item.image ? "  — 仅视频" : ""}`)] : [`支持媒体: ${tool.levels[0].image ? "图片" : ""}${tool.levels[0].image && tool.levels[0].video ? "、" : ""}${tool.levels[0].video ? "视频" : ""}（自动选择唯一档位）`]),
     "",
     "工具选项:",
     ...(tool.levels.length > 1 ? ["  --level <n>                  档位编号（默认 " + tool.defaultLevel + "）"] : []),
-    "  --input <path>               输入媒体绝对路径，支持文件夹、视频图片路径（多个以英文“,”号隔开，必填）",
+    `  --input <path>               输入媒体绝对路径，支持文件夹、视频图片路径（多个以英文“,”号隔开，${command === "ai_beauty" ? "处理时必填，查询风格无需填写" : "必填"}）`,
     "",
     ...(tool.options || []).map(line => "  " + line),
     "",
     "示例:",
+    ...(command === "ai_beauty" ? [
+      "  wink-cli ai_beauty -gender male --input \"D:\\video.mp4\"",
+      "  wink-cli ai_beauty --gender female --input \"D:\\photo.jpg\"",
+      "  wink-cli ai_beauty --list-styles",
+      "  wink-cli ai_beauty --style <列表中的物料ID> --input \"D:\\video.mp4\"",
+    ] : []),
     `  wink-cli ${command}${tool.levels.length > 1 ? ` --level ${tool.defaultLevel}` : ""} --input "D:\\${tool.levels[0].video ? "video.mp4" : "photo.jpg"}"${tool.example ? " " + tool.example : ""}`,
     "",
     "其他选项:",
@@ -148,14 +156,14 @@ function pictureQualityHelp() { return toolHelp("picture_quality"); }
 // ---------------------------------------------------------------- argv 解析
 
 /**
- * 极简 argv 解析：支持 `--key value` / `--key=value` / 布尔 `--flag` / 短横 `-h`。
+ * 极简 argv 解析：支持 `--key value` / `--key=value` / 布尔 `--flag` / `-h`，以及 `-gender` 别名。
  * 返回值形如 { _: ["picture_quality"], flags: { level: "2", input: "a,b" } }。
  */
 function parseArgv(argv) {
   const positional = [];
   const flags = {};
   for (let i = 0; i < argv.length; i += 1) {
-    const token = String(argv[i]);
+    const token = String(argv[i]).replace(/^-gender(?==|$)/, "--gender");
     if (token === "--") {
       positional.push(...argv.slice(i + 1));
       break;
@@ -442,19 +450,20 @@ function serverError(payload) {
 async function runCloudTool(command, flags, services = {}, environment = resolveEnvironment(flags)) {
   const tool = COMMANDS[command];
   const inputRaw = optionValue(flags, "input");
-  if (!inputRaw) {
-    progress("错误: --input 为必填项（多个路径以英文“,”号隔开，支持文件夹）");
-    progress("");
-    progress(toolHelp(command));
-    progress("");
-    return 1;
-  }
   let prepared;
   try {
     if (flags.level === true) throw new WinkError("--level 需要档位编号");
     prepared = prepareTool(command, flags);
     if (prepared.reference) (services.probeMedia || probeMedia)(prepared.reference);
   } catch (error) { progress(`错误: ${error.message}`); return 1; }
+  const listStyles = prepared.beauty?.listStyles === true;
+  if (!inputRaw && !listStyles) {
+    progress("错误: --input 为必填项（多个路径以英文“,”号隔开，支持文件夹）");
+    progress("");
+    progress(toolHelp(command));
+    progress("");
+    return 1;
+  }
   const levelRaw = optionValue(flags, "level");
   const level = levelRaw === undefined ? tool.defaultLevel : Number(levelRaw);
   if (!levelInfo(level, command)) {
@@ -470,17 +479,21 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
   }
   const asJson = optionFlag(flags, "json");
 
-  const roots = splitInputs(inputRaw);
-  if (roots.some((root) => !path.isAbsolute(root))) {
-    progress("错误: --input 必须使用当前系统的绝对路径");
-    return 1;
-  }
-  const { files, missing, skipped } = collectInputs(roots);
-  for (const item of missing) progress(`警告: 路径不存在，已跳过: ${item}`);
-  for (const item of skipped) progress(`警告: 不支持的媒体类型，已跳过: ${item}`);
-  if (!files.length) {
-    progress("错误: 没有找到可处理的输入媒体文件");
-    return 1;
+  let files = [];
+  if (!listStyles) {
+    const roots = splitInputs(inputRaw);
+    if (roots.some((root) => !path.isAbsolute(root))) {
+      progress("错误: --input 必须使用当前系统的绝对路径");
+      return 1;
+    }
+    const collected = collectInputs(roots);
+    files = collected.files;
+    for (const item of collected.missing) progress(`警告: 路径不存在，已跳过: ${item}`);
+    for (const item of collected.skipped) progress(`警告: 不支持的媒体类型，已跳过: ${item}`);
+    if (!files.length) {
+      progress("错误: 没有找到可处理的输入媒体文件");
+      return 1;
+    }
   }
 
   const client = (services.createClient || ((options) => new WinkClient(options)))({ baseUrl, log: (line) => progress(`        ${line}`) });
@@ -492,6 +505,23 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     return 1;
   }
   const authed = client.withApiKey(apiKey);
+
+  let beautyStyle;
+  let beautyStyles;
+  if (command === "ai_beauty") {
+    try {
+      const styles = await fetchBeautyStyles(authed, { isTest: isTest ? 1 : 0 });
+      if (listStyles) {
+        out(asJson ? JSON.stringify({ ok: true, command, env, styles }, null, 2) : formatBeautyStyles(styles));
+        return 0;
+      }
+      beautyStyles = styles;
+      beautyStyle = selectBeautyStyle(styles, prepared.beauty.styleId);
+    } catch (error) {
+      progress(`错误: 获取或选择 AI 美容风格失败，未投递任务：${error.message}`);
+      return 1;
+    }
+  }
 
   // 登录后先获取能力配置；配置不可用时禁止跳过校验直接投递。
   let configPayload = null;
@@ -518,9 +548,17 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     const contentType = contentTypeOfFile(file);
     let info;
     let media;
+    let beautySubmission;
+    let selectedBeautyStyle = beautyStyle;
     try {
       info = taskTypeFor(level, contentType, command);
       if (prepared.taskType) info.taskType = prepared.taskType;
+      if (prepared.beauty) {
+        if (prepared.beauty.gender) {
+          selectedBeautyStyle = selectBeautyStyle(beautyStyles, undefined, { gender: prepared.beauty.gender, contentType });
+        }
+        beautySubmission = buildBeautySubmission(prepared.beauty, selectedBeautyStyle, contentType);
+      }
       media = (services.probeMedia || probeMedia)(file);
     } catch (error) {
       failed += 1;
@@ -573,12 +611,12 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         contentType,
         taskType: info.taskType,
         ...prepared.submit,
-        typeParams: JSON.stringify({ ...prepared.params,
+        typeParams: JSON.stringify({ ...prepared.params, ...beautySubmission?.params,
           ...(command === "cartoon" && contentType === "1" ? { preview: 1 } : {}),
           ...(referenceUpload ? { cover_pic: referenceUpload.resource_url } : {}) }),
         ...(referenceUpload ? { coverPic: referenceUpload.resource_url } : {}),
         // 全能修复的票据功能/物料 ID 与配置 func_id 不同，沿用官网明确的权益标识。
-        rightDetail: JSON.stringify(tool.rightDetail || { source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
+        rightDetail: JSON.stringify(beautySubmission?.rightDetail || tool.rightDetail || { source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
         interval,
         timeout,
         onInsufficientBeans: async rejection => {
@@ -611,6 +649,11 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         level_name: info.name,
         type: info.taskType,
         content_type: contentType,
+        ...(prepared.beauty?.gender ? { beauty_style: {
+          material_id: selectedBeautyStyle.material_id,
+          name: selectedBeautyStyle.name,
+          gender: prepared.beauty.gender,
+        } } : {}),
         result_url: remote,
       });
     } catch (error) {

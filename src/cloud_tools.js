@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { WinkError } = require("./wink_client");
+const { prepareBeautyOptions } = require("./ai_beauty");
 // CF 715632845 v5 (2026-09-10). func_type 是限免标识，不是 right_detail.function_id。
 const PICTURE_QUALITY_LEVELS = [
   { level: 1, name: "高清", image: "2", video: "1", funcType: "2" },
@@ -39,7 +40,16 @@ const COMMANDS = Object.freeze({
   night_scene: single("夜景提升", "20", "19", { options: ["--strength <value>           low=中 / median=高，默认 low"] }),
   video_frame: { name: "视频补帧", defaultLevel: 1, levels: [{ level: 1, name: "补帧", video: "4", funcType: "3" }, { level: 2, name: "补帧2.0", video: "36", funcType: "3" }, { level: 3, name: "AIGC补帧", video: "74" }], options: ["--fps <n>                    目标帧率（与 --factor 二选一，均不填由服务端决定）", "--factor <n>                 补帧倍率（大于 1）"] },
   ai_translation: single("AI翻译", undefined, "70", { options: ["--target-language <code>     目标语言（必填，例如 en）", "--source-language <code>     源语言，默认 zh", "--translate-params <json>    完整翻译配置 JSON 或 @文件；可替代语言选项"], example: '--target-language en' }),
-  ai_beauty: single("AI美容", "40", "39", { options: ["--retouch-params <json>      效果的 parameter/material_conf 对象，JSON 或 @文件（必填）"], example: '--retouch-params "@D:\\beauty.json"' }),
+  ai_beauty: single("AI美容", "40", "39", { options: [
+    "--list-styles               获取当前环境的美颜风格列表，无需 --input",
+    "--gender <male|female>      按性别自动选择适用风格，也支持 -gender",
+    "                           male：少年/绅士/硬朗/浪漫",
+    "                           female：自然/减龄/裸感/女高/浓颜/欧美/紧致",
+    "--style <id>                手动指定风格物料 ID，与 --gender 互斥",
+    "--hair-silky                开启发质柔顺（默认关闭，可单独使用）",
+    "--beauty-double-chin        开启去双下巴（默认关闭，可单独使用）",
+    "--gender 与 --style 二选一，或单独开启附加效果；图片/视频参数自动区分",
+  ], example: '--hair-silky --beauty-double-chin' }),
   video_defogging: single("视频去雾", undefined, "107"),
   old_photo: single("老照片修复", "122", undefined, { variants: { standard: "122", quality: "161", shared: "164" }, options: ["--variant <value>            standard / quality / shared，默认 standard", "--workflow-params <json>     修复开关 JSON 或 @文件；默认基础修复、超分开启"] }),
 });
@@ -47,6 +57,7 @@ const COMMANDS = Object.freeze({
 function prepareTool(command, flags) {
   const params = {}, submit = {};
   const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json"]);
+  if (command === "ai_beauty") allowed.add("retouch-params"); // 为旧入口给出明确迁移提示。
   for (const line of COMMANDS[command].options || []) {
     const key = /^--([a-z-]+)/.exec(line)?.[1];
     if (key) allowed.add(key);
@@ -103,11 +114,11 @@ function prepareTool(command, flags) {
     if (![translation.source_language, translation.target_language].every(v => typeof v === "string" && v.trim())) throw new WinkError("翻译配置需要 source_language 和 target_language");
     params.translate_params = JSON.stringify(translation);
   }
-  if (command === "ai_beauty") params.retouch_ai_params = JSON.stringify(json("retouch-params"));
+  const beauty = command === "ai_beauty" ? prepareBeautyOptions(flags) : undefined;
   if (command === "old_photo") {
     taskType = COMMANDS.old_photo.variants[choice("variant", ["standard", "quality", "shared"], "standard")];
     params.workflow_params = JSON.stringify(flags["workflow-params"] !== undefined ? json("workflow-params") : { basic_repair: 1, super_resolution: 1, scratch_repair: 0, color_repair: 0, picture_correct: 0 });
   }
-  return { params, submit, configValue, taskType, reference };
+  return { params, submit, configValue, taskType, reference, ...(beauty ? { beauty } : {}) };
 }
 module.exports = { COMMANDS, PICTURE_QUALITY_LEVELS, REMOVE_WATERMARK_LEVELS, prepareTool };

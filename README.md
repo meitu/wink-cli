@@ -70,6 +70,26 @@ ffprobe 为可选依赖。图片、常见 MP4/MOV 优先直接读取元信息；
 ./wink-cli ai_translation --env pre --input "/absolute/path/video.mp4" --target-language en
 ```
 
+## AI 美容风格与附加效果
+
+可通过性别自动选择风格，或者查询当前环境下的风格，再将返回的 `material_id` 传给 `--style`：
+
+```sh
+wink-cli ai_beauty -gender male --input "/absolute/video.mp4"
+wink-cli ai_beauty --gender female --input "/absolute/photo.jpg"
+wink-cli ai_beauty --list-styles
+wink-cli ai_beauty --list-styles --json
+wink-cli ai_beauty --style <物料ID> --input "/absolute/video.mp4"
+wink-cli ai_beauty --style <物料ID> --hair-silky --beauty-double-chin --input "/absolute/photo.jpg"
+wink-cli ai_beauty --hair-silky --input "/absolute/video.mp4"
+```
+
+`-gender` 和 `--gender` 等价，值为 `male` / `female`，与 `--style` 二选一。CLI 获取完整列表后，按风格名称匹配：`male` 对应“少年、绅士、硬朗、浪漫”，`female` 对应“自然、减龄、裸感、女高、浓颜、欧美、紧致”；名称中明确的“男/女、male/female”标记优先。排除当前媒体不适用或配置无效的素材后，选择服务端顺序中的首个匹配项；混合图片/视频输入会分别匹配。没有匹配或名称同时对应男女两类时不自动选择，提示通过 `--style` 手选。`gender` 只用于本地选风格，不额外传到投递接口；`--json` 的每项成功结果包含实际 `beauty_style` 的物料 ID、名称与所选性别。
+
+性别、风格、发质柔顺、去双下巴都不自动选择或开启；至少指定一项才可处理。两个开关可以单独使用，也能与 `--gender` 或 `--style` 组合。CLI 每次处理前获取完整风格列表，验证物料 ID 和图片/视频适用范围，将服务端的 `material_conf.parameter` 原样作为 `beauty_style`。图片的附加效果使用 `media_mode=0`，视频使用 `1`，关闭的效果不传。旧的 `--retouch-params` 改为上述风格选择方式，不再手写或猜测美容参数。
+
+列表查询使用当前 CLI 环境的 `/material/ai_beauty/list` 与现有 `api_key`；查询不上传素材或投递任务。接口失败时处理流程在上传前停止。2026-09-18 对正式/预发布接口的只读联调均返回 `HTTP 400 / code=10108 / 查询失败`，仍需确认服务端已开放 CLI 调用；本地模拟协议测试不代表真实云处理已验收。
+
 ## 登录、输入和输出
 
 - 默认环境为 `release`，可用 `--env pre|beta|release` 切换。仅 pre 使用测试上传通道。
