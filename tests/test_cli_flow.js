@@ -79,7 +79,7 @@ async function capture(fn) {
           res.end(JSON.stringify(mode === "config-failure" ? { code: 1234, message: "配置暂不可用" } : {
             code: 0, data: [
               { type: 12, name: "超清图片", content_type: 1 },
-              { type: 11, name: "超清视频", content_type: 2, min_time: 1, max_time_normal: 60 },
+              { type: 11, name: "超清视频", content_type: 2, min_time: 1, max_time_normal: 60, max_time: 3600 },
               { type: 8, name: "图片去水印", content_type: 1 },
               { type: 3, name: "视频去水印", content_type: 2, min_time: 1, max_time_normal: 60 },
               { type: 95, name: "图片AI去水印", content_type: 1 },
@@ -100,6 +100,11 @@ async function capture(fn) {
           if (mode === "http-parameter-failure" || (form.get("content_type") === "2" && form.has("duration") && !/^\d+$/.test(form.get("duration")))) {
             res.statusCode = 400;
             res.end(JSON.stringify({ code: 10101, message: "参数错误" }));
+            return;
+          }
+          if (mode === "normal-account-duration-rejection") {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ code: 21001, message: "当前账号不是会员，视频时长不能超过60秒" }));
             return;
           }
           res.end(JSON.stringify(mode === "beans-failure" ? { code: 7777, message: "美豆不足，请充值" } : {
@@ -337,7 +342,33 @@ async function capture(fn) {
     assert.ok(configFailure.err.includes("配置暂不可用"));
     assert.deepStrictEqual(events, ["config"], "failed preflight must never upload/submit");
 
-    events = []; mode = "success"; duration = 120;
+    // The CLI has no confirmed membership identity. Longer videos reach the server
+    // without an invented VIP flag, and seconds still become integer milliseconds.
+    for (const seconds of [61, 3600]) {
+      events = []; mode = "success"; duration = seconds; queryCount = 0;
+      const before = submits.length;
+      const longVideo = await capture(() => main(args(video), services));
+      assert.strictEqual(longVideo.code, 0, longVideo.err);
+      assert.strictEqual(JSON.parse(longVideo.out).results[0].ok, true);
+      assert.strictEqual(submits.length, before + 1);
+      assert.strictEqual(submits.at(-1).duration, String(seconds * 1000));
+      assert.ok(!Object.hasOwn(submits.at(-1), "is_vip"), "do not invent a VIP entitlement on submit");
+      assert.deepStrictEqual(events, ["config", "upload", "submit", "query", "query"]);
+    }
+
+    events = []; mode = "normal-account-duration-rejection"; duration = 61;
+    const beforeRejected = submits.length;
+    const normalAccount = await capture(() => main(args(video), services));
+    assert.strictEqual(normalAccount.code, 3, normalAccount.err);
+    const normalFailure = JSON.parse(normalAccount.out).results[0];
+    assert.strictEqual(normalFailure.ok, false);
+    assert.ok(normalFailure.reason.includes("当前账号不是会员，视频时长不能超过60秒"),
+      "authoritative account-duration rejection must reach the user unchanged");
+    assert.ok(!Object.hasOwn(normalFailure, "result_url"));
+    assert.strictEqual(submits.length, beforeRejected + 1, "account rejection must not retry a paid submission");
+    assert.deepStrictEqual(events, ["config", "upload", "submit"], "rejected submit must not poll or recharge");
+
+    events = []; mode = "success"; duration = 3600.001;
     const tooLong = await capture(() => main(args(video), services));
     assert.strictEqual(tooLong.code, 3);
     assert.ok(JSON.parse(tooLong.out).results[0].reason.includes("上限"));
@@ -348,7 +379,7 @@ async function capture(fn) {
     assert.strictEqual(rejected.code, 3);
     assert.ok(JSON.parse(rejected.out).results[0].reason.includes("美豆不足，请充值（code=7777）"));
     assert.deepStrictEqual(events, ["config", "upload", "submit"], "service rejection is shown without querying or resubmitting");
-    console.log("cli flow: authorization, mixed media, polling, result links without downloads, config failure, duration rejection and server error passed");
+    console.log("cli flow: authorization, mixed media, polling, result links without downloads, config failure, unknown membership durations and server rejection passed");
   } finally {
     if (server?.listening) await new Promise((resolve) => server.close(resolve));
     if (savedKey === undefined) delete process.env.WINK_CLI_API_KEY; else process.env.WINK_CLI_API_KEY = savedKey;

@@ -196,9 +196,9 @@ async function testSubmitProtocol() {
   assert.strictEqual(checkAiTypeSupport(cfgList, { type: "2", contentType: "1" }).ok, true, "config value space (2) matches directly");
   assert.strictEqual(checkAiTypeSupport(cfgList, { type: "99" }).ok, false, "unknown type rejected");
   assert.strictEqual(checkAiTypeSupport(cfgList, { contentType: "2" }).ok, true, "content_type-only matching picks the video feature");
-  const vid = checkAiTypeSupport(cfgList, { type: "11", contentType: "2", durationSeconds: 120 });
+  const vid = checkAiTypeSupport(cfgList, { type: "11", contentType: "2", durationSeconds: 120, isVip: false });
   assert.strictEqual(vid.ok, false, "120s exceeds max_time_normal=60 for non-vip");
-  assert.ok(checkAiTypeSupport(cfgList, { type: "11", contentType: "2", durationSeconds: 30, isVip: true }).ok, "30s ok for vip (max_time=3600)");
+  assert.ok(checkAiTypeSupport(cfgList, { type: "11", contentType: "2", durationSeconds: 120, isVip: true }).ok, "120s ok for vip (max_time=3600)");
   // ---- inferContentType ----
   assert.strictEqual(inferContentType("https://x/y.MOV?e=1"), "2");
   assert.strictEqual(inferContentType("https://x/y.jpeg"), "1");

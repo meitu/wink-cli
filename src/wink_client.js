@@ -524,7 +524,7 @@ function buildAiTypeConfigParams(options = {}, defaults = {}) {
  * @param {object} input { contentType: "1"|"2"（用户输入的媒体类型，必填）,
  *   type?: string（11/12 投递值域或 1/2 配置值域）, durationSeconds?: number（视频时长，秒）,
  *   configMatch?: { task_type: number, func_id: number }（按功能标识取运行时算法 type）,
- *   isVip?: boolean }
+ *   isVip?: boolean（仅接受已确认的 true/false；缺失或其他值表示身份未知） }
  * @returns {{ ok: boolean, config?: object, reason?: string }}
  *   ok=false 时 reason 为可直接展示给用户的中文提示。
  */
@@ -579,10 +579,30 @@ function checkAiTypeSupport(payload, input = {}) {
   if (contentType === "2" && input.durationSeconds != null) {
     const duration = Number(input.durationSeconds);
     if (Number.isFinite(duration)) {
-      const min = Number(config.min_time);
-      const max = input.isVip ? Number(config.max_time) : Number(config.max_time_normal);
+      const seconds = value => (typeof value === "number" || (typeof value === "string" && value.trim() !== ""))
+        ? Number(value) : Number.NaN;
+      const min = seconds(config.min_time);
+      const normalMax = seconds(config.max_time_normal);
+      const vipMax = seconds(config.max_time);
+      let max, accountLabel;
+      if (input.isVip === true) {
+        max = vipMax;
+        accountLabel = "会员";
+      } else if (input.isVip === false) {
+        max = normalMax;
+        accountLabel = "普通用户";
+      } else {
+        // 当前 CLI 协议未提供可信会员状态。未知身份不能当作普通
+        // 用户，也不能当作会员；账号权益由 /task/submit 最终校验。
+        // 两类账号都明确配置有限上限时，仍可拒绝超出所有账号上限的素材。
+        // 任一上限缺失/无效/不限时，不凭另一类账号的值推断共同上限。
+        if (Number.isFinite(normalMax) && normalMax > 0 && Number.isFinite(vipMax) && vipMax > 0) {
+          max = Math.max(normalMax, vipMax);
+        }
+        accountLabel = "该功能";
+      }
       if (Number.isFinite(min) && duration < min) return { ok: false, config, reason: `视频时长 ${duration}s 低于该功能下限 ${min}s` };
-      if (Number.isFinite(max) && max > 0 && duration > max) return { ok: false, config, reason: `视频时长 ${duration}s 超过${input.isVip ? "会员" : "普通用户"}上限 ${max}s` };
+      if (Number.isFinite(max) && max > 0 && duration > max) return { ok: false, config, reason: `视频时长 ${duration}s 超过${accountLabel}上限 ${max}s` };
     }
   }
   return { ok: true, config };

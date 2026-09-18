@@ -1,6 +1,6 @@
 {
   "name": "wink-cli",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "Wink CLI for cloud image and video processing: login, media validation, upload, submit, poll and return result URLs.",
   "type": "commonjs",
   "main": "src/cli.js",
@@ -22,7 +22,7 @@
   "scripts": {
     "start": "node src/cli.js",
     "cli": "node src/cli.js",
-    "test": "node tests/test_upload_sdk.js && node tests/test_mp4_metadata.js && node tests/test_cli.js && node tests/test_cli_progress.js && node tests/test_cloud_tools.js && node tests/test_video_repair.js && node tests/test_watermark_result.js && node tests/test_cli_flow.js && node tests/test_cli_env.js && node tests/test_install.js && node tests/test_beans.js && node tests/test_open_browser.js && node tests/test_device_id.js",
+    "test": "node tests/test_upload_sdk.js && node tests/test_duration_limits.js && node tests/test_mp4_metadata.js && node tests/test_cli.js && node tests/test_cli_progress.js && node tests/test_cloud_tools.js && node tests/test_video_repair.js && node tests/test_watermark_result.js && node tests/test_cli_flow.js && node tests/test_cli_env.js && node tests/test_install.js && node tests/test_beans.js && node tests/test_open_browser.js && node tests/test_device_id.js",
     "prepublishOnly": "npm test",
     "pack:dry": "npm pack --dry-run"
   },

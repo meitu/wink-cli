@@ -531,6 +531,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
 
     let selectedConfig;
     if (configPayload) {
+      // 当前协议未提供已确认的会员状态，保持未知；不要把它硬编码为非会员。
+      // 账号专属时长由投递接口校验，本地仍检查素材限制和所有账号的共同上限。
       const check = checkAiTypeSupport(configPayload, { type: info.taskType, contentType, durationSeconds: media.duration,
         configMatch: tool.configMatch,
         configValue: command === "cartoon" && contentType === "1" ? undefined : prepared.configValue, strictType: true,

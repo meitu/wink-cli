@@ -35,7 +35,7 @@ async function capture(fn) {
 
   const config = overrides => ({
     type: 987, task_type: 2, func_id: 65591, content_type: 2,
-    min_time: 1, max_time_normal: 60, ...overrides,
+    min_time: 1, max_time_normal: 60, max_time: 60, ...overrides,
   });
   let base, configs, uploads, submits, calls, queryCounts, duration, serverErrors;
   const server = http.createServer(async (req, res) => {
