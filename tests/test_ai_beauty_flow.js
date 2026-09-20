@@ -1,5 +1,6 @@
 "use strict";
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const os = require("os");
@@ -14,6 +15,25 @@ async function capture(fn) {
   process.stderr.write = value => { err += value; return true; };
   try { return { code: await fn(), out, err }; }
   finally { process.stdout.write = stdout; process.stderr.write = stderr; }
+}
+
+async function withRandomChoices(choices, fn, beforeChoice = () => {}) {
+  const original = crypto.randomInt;
+  let calls = 0;
+  crypto.randomInt = max => {
+    const choice = choices[calls++];
+    assert.ok(choice, "each file draws exactly once from its eligible style pool");
+    assert.strictEqual(max, choice.max, "only eligible styles are included in the random pool");
+    beforeChoice(calls);
+    return choice.index;
+  };
+  try {
+    const result = await fn();
+    assert.strictEqual(calls, choices.length, "each expected random selection occurred");
+    return result;
+  } finally {
+    crypto.randomInt = original;
+  }
 }
 
 (async () => {
@@ -172,7 +192,7 @@ async function capture(fn) {
     const secondPageStyles = pages;
     reset();
     pages = secondPageStyles;
-    const selectedPage = await invoke(["--style", "67201"], image);
+    const selectedPage = await withRandomChoices([], () => invoke(["--style", "67201"], image));
     assert.strictEqual(selectedPage.code, 0, selectedPage.err);
     assertSubmission(0, image, true, false, false);
     assert.deepStrictEqual(events, [listPath, listPath, "/task/ai_type_config", "upload", "/task/submit", "/task/query"]);
@@ -303,18 +323,25 @@ async function capture(fn) {
     assert.strictEqual(copied.code, 0, copied.err);
     assertGenderResult(copied, 0, male, "male", video, true, true);
 
-    // 全部页读取结束后按每个文件的实际媒体选择；同类物料保持服务端顺序。
+    // 完整分页后按实际媒体分别随机；后页通用物料也能入选，而非固定选择首项。
     const maleImage = { ...male, material_id: 67241, name: "男士图片", media_type_limit: 1 };
     const maleVideo = { ...male, material_id: "67242", name: "男士视频", media_type_limit: 2, material_conf: { parameter: { video_only: true } } };
-    const laterMale = { ...male, material_id: 67243, name: "男士通用备用" };
+    const laterMale = { ...male, material_id: 67243, name: "男士通用备用", material_conf: { parameter: { unisex_media: true, strength: "0.43" } } };
     reset();
     pages = new Map([
       ["", { item_list: [style(), female, maleImage], cursor: nextCursor }],
       [nextCursor, { item_list: [maleVideo, laterMale], cursor: "" }],
     ]);
-    const mixedGender = await invoke(["--gender", "male", "--hair-silky"], `${image},${video}`);
+    const mixedGender = await withRandomChoices(
+      [{ max: 2, index: 1 }, { max: 2, index: 0 }],
+      () => invoke(["--gender", "male", "--hair-silky"], `${image},${video}`),
+      call => {
+        assert.strictEqual(requests.filter(url => url.pathname === listPath).length, 2, "all pages are fetched before drawing a style");
+        assert.strictEqual(uploads.length, call - 1, "draw before uploading each new file");
+      },
+    );
     assert.strictEqual(mixedGender.code, 0, mixedGender.err);
-    assertGenderResult(mixedGender, 0, maleImage, "male", image, true);
+    assertGenderResult(mixedGender, 0, laterMale, "male", image, true);
     assertGenderResult(mixedGender, 1, maleVideo, "male", video, true);
     assert.deepStrictEqual(uploads.map(item => item.file), [image, video]);
     assert.deepStrictEqual(events, [listPath, listPath, "/task/ai_type_config", "upload", "/task/submit", "/task/query", "upload", "/task/submit", "/task/query"]);
@@ -325,15 +352,17 @@ async function capture(fn) {
       const file = index % 2 === 0 ? image : video;
       const mediaLimit = file === image ? 1 : 2;
       const candidate = style({ material_id: 67300 + index, name, media_type_limit: mediaLimit });
+      const alternate = { ...candidate, material_id: 67600 + index, material_conf: { parameter: { selected_keyword: name, alternate: true } } };
       const opposite = style({ material_id: 67400 + index, name: gender === "female" ? "硬朗" : "裸感" });
       reset();
       pages = new Map([
         ["", { item_list: [style({ name: "柔和" }), opposite, { ...candidate, material_id: 67500 + index, media_type_limit: 3 - mediaLimit }], cursor: nextCursor }],
-        [nextCursor, { item_list: [candidate, { ...candidate, material_id: 67600 + index }], cursor: "" }],
+        [nextCursor, { item_list: [candidate, alternate], cursor: "" }],
       ]);
-      const selectedKeyword = await invoke(["--gender", gender], file);
+      const selectedIndex = index % 2;
+      const selectedKeyword = await withRandomChoices([{ max: 2, index: selectedIndex }], () => invoke(["--gender", gender], file));
       assert.strictEqual(selectedKeyword.code, 0, selectedKeyword.err);
-      assertGenderResult(selectedKeyword, 0, candidate, gender, file);
+      assertGenderResult(selectedKeyword, 0, selectedIndex ? alternate : candidate, gender, file);
       assert.deepStrictEqual(events, [listPath, listPath, "/task/ai_type_config", "upload", "/task/submit", "/task/query"]);
     }
 
@@ -361,9 +390,9 @@ async function capture(fn) {
       style({ name: "male video only", media_type_limit: 2 }),
     ];
     reset([...unusable, male, laterMale]);
-    const filtered = await invoke(["--gender", "male"], image);
+    const filtered = await withRandomChoices([{ max: 2, index: 1 }], () => invoke(["--gender", "male"], image));
     assert.strictEqual(filtered.code, 0, filtered.err);
-    assertGenderResult(filtered, 0, male, "male", image);
+    assertGenderResult(filtered, 0, laterMale, "male", image);
     for (const [items, gender, input] of [[unusable, "male", image], [[male], "female", video], [[], "male", image]]) {
       reset(items);
       const unmatched = await invoke(["--gender", gender, "--hair-silky"], input);
@@ -392,7 +421,7 @@ async function capture(fn) {
       assert.deepStrictEqual(events, []);
       assert.deepStrictEqual(clientUrls, []);
     }
-    console.log("ai_beauty: local HTTP style discovery, pagination/auth, media/options matrix, exact task parameters, rights and pre-upload rejection passed");
+    console.log("ai_beauty: local HTTP style discovery, pagination/auth, per-file random gender styles, media/options matrix, exact task parameters, rights and pre-upload rejection passed");
   } finally {
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];

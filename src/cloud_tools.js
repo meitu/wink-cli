@@ -42,7 +42,7 @@ const COMMANDS = Object.freeze({
   ai_translation: single("AI翻译", undefined, "70", { options: ["--target-language <code>     目标语言（必填，例如 en）", "--source-language <code>     源语言，默认 zh", "--translate-params <json>    完整翻译配置 JSON 或 @文件；可替代语言选项"], example: '--target-language en' }),
   ai_beauty: single("AI美容", "40", "39", { options: [
     "--list-styles               获取当前环境的美颜风格列表，无需 --input",
-    "--gender <male|female>      按性别自动选择适用风格，也支持 -gender",
+    "--gender <male|female>      按性别随机选择适用风格，也支持 -gender",
     "                           male：少年/绅士/硬朗/浪漫",
     "                           female：自然/减龄/裸感/女高/浓颜/欧美/紧致",
     "--style <id>                手动指定风格物料 ID，与 --gender 互斥",

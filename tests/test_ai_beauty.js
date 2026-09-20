@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const { WinkError } = require("../src/wink_client");
 const { prepareBeautyOptions, fetchBeautyStyles, selectBeautyStyle, buildBeautySubmission, formatBeautyStyles } = require("../src/ai_beauty");
 
@@ -21,6 +22,24 @@ freezeDeep(style);
 // 所有失败必须为领域错误，便于 CLI 统一输出可理解的失败原因。
 function throwsWink(fn, pattern) {
   assert.throws(fn, error => error instanceof WinkError && pattern.test(error.message));
+}
+
+// 控制抽样索引验证每个候选都能被选中，避免概率性测试偶发失败。
+function withRandomIndex(index, expectedCount, fn) {
+  const original = crypto.randomInt;
+  let calls = 0;
+  crypto.randomInt = max => {
+    assert.strictEqual(max, expectedCount);
+    calls++;
+    return index;
+  };
+  try {
+    const result = fn();
+    assert.strictEqual(calls, 1);
+    return result;
+  } finally {
+    crypto.randomInt = original;
+  }
 }
 
 // 模拟分页客户端记录每次参数，不含上传和任务投递方法。
@@ -115,12 +134,16 @@ function pageClient(pages) {
   throwsWink(() => selectBeautyStyle([genderStyle("female")], undefined, { gender: "male", contentType: 1 }), /风格|gender/);
   throwsWink(() => selectBeautyStyle([genderStyle("male")], undefined, { gender: "female", contentType: 1 }), /风格|gender/);
 
-  // 先过滤媒体与无效物料，再依服务端顺序选第一个；字符串物料 ID 保持原类型。
+  // 先过滤媒体与无效物料，全部适用候选都有机会选中；字符串物料 ID 保持原类型。
   const firstMale = freezeDeep(genderStyle("male first", { material_id: "67291", media_type_limit: 1 }));
   const secondMale = freezeDeep(genderStyle("male second", { material_id: 67292, media_type_limit: 0 }));
   const maleVideo = freezeDeep(genderStyle("male video", { material_id: 67293, media_type_limit: 2 }));
-  assert.strictEqual(selectBeautyStyle([firstMale, secondMale], undefined, { gender: "male", contentType: 1 }), firstMale);
-  assert.strictEqual(selectBeautyStyle([secondMale, firstMale], undefined, { gender: "male", contentType: 1 }), secondMale);
+  for (const candidates of [[firstMale, secondMale], [secondMale, firstMale]]) {
+    for (const index of [0, 1]) {
+      assert.strictEqual(withRandomIndex(index, 2, () => selectBeautyStyle(candidates, undefined,
+        { gender: "male", contentType: 1 })), candidates[index]);
+    }
+  }
   assert.strictEqual(selectBeautyStyle([firstMale, maleVideo], undefined, { gender: "male", contentType: 2 }), maleVideo);
   const invalidCandidates = [
     ...[undefined, null, "", "bad", "1.5", -1, 1.5, [67294], {}].map(material_id => genderStyle("male", { material_id })),
@@ -128,7 +151,13 @@ function pageClient(pages) {
     ...[undefined, null, -1, 3, "0", "1", "2"].map(media_type_limit => genderStyle("male", { media_type_limit })),
     genderStyle("female"), genderStyle("male female"), genderStyle("柔和风格"),
   ];
-  assert.strictEqual(selectBeautyStyle([...invalidCandidates, firstMale, secondMale], undefined, { gender: "male", contentType: 1 }), firstMale);
+  assert.strictEqual(withRandomIndex(1, 2, () => selectBeautyStyle([...invalidCandidates, firstMale, secondMale], undefined,
+    { gender: "male", contentType: 1 })), secondMale);
+  const femaleCandidates = ["自然", "减龄", "裸感"].map((name, index) => freezeDeep(genderStyle(name, { material_id: 67400 + index })));
+  for (const index of [0, 1, 2]) {
+    assert.strictEqual(withRandomIndex(index, 3, () => selectBeautyStyle([maleVideo, ...femaleCandidates], undefined,
+      { gender: "female", contentType: 2 })), femaleCandidates[index]);
+  }
   throwsWink(() => selectBeautyStyle(invalidCandidates, undefined, { gender: "male", contentType: 1 }), /风格|gender/);
   throwsWink(() => selectBeautyStyle([firstMale], undefined, { gender: "male", contentType: 2 }), /风格|gender/);
 

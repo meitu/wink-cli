@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const { WinkError } = require("./wink_client");
 
 // 美容开关只接受 CLI 明确支持的布尔值，避免把字符串 false 当成开启。
@@ -89,21 +90,21 @@ function namedGender(style) {
   return maleStyle ? "male" : "female";
 }
 
-/** 性别选择先过滤媒体与可投递配置；同类候选保留服务端顺序，不另设本地风格。 */
+/** 先过滤性别、媒体与可投递配置，再从全部适用候选中等概率随机选择。 */
 function genderStyle(styles, gender, contentType) {
   if (!["male", "female"].includes(gender)) throw new WinkError("--gender 只接受 male / female");
   if (![1, 2, "1", "2"].includes(contentType)) throw new WinkError("自动匹配 AI 美容风格需要图片或视频类型");
-  const selected = styles.find(style => {
+  const candidates = styles.filter(style => {
     if (namedGender(style) !== gender) return false;
     if (style.media_type_limit !== 0 && style.media_type_limit !== Number(contentType)) return false;
     if (!["number", "string"].includes(typeof style.material_id)) return false;
     const parameter = style.material_conf?.parameter;
     return /^\d+$/.test(String(style.material_id)) && parameter && typeof parameter === "object" && !Array.isArray(parameter) && Object.keys(parameter).length > 0;
   });
-  if (!selected) {
+  if (!candidates.length) {
     throw new WinkError(`未找到适用于${Number(contentType) === 1 ? "图片" : "视频"}的 ${gender} 美容风格（${GENDER_STYLE_NAMES[gender].join(" / ")}或明确的性别标记），请用 --list-styles 查询后通过 --style 手动选择`);
   }
-  return selected;
+  return candidates[crypto.randomInt(candidates.length)];
 }
 
 /** 仅允许选择本次服务端列表中唯一存在且带有有效 parameter 的风格。 */
