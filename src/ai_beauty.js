@@ -77,6 +77,21 @@ const GENDER_STYLE_NAMES = {
   female: ["自然", "减龄", "裸感", "女高", "浓颜", "欧美", "紧致"],
 };
 
+/** 优先使用实际接口的 beauty_style，兼容旧文档的 parameter；不合并或改写配置。 */
+function beautyStyleParameters(style) {
+  const conf = style?.material_conf;
+  return [conf?.beauty_style, conf?.parameter].find(value =>
+    value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0);
+}
+
+function requireBeautyStyleParameters(style) {
+  const parameters = beautyStyleParameters(style);
+  if (!parameters) {
+    throw new WinkError(`AI 美容风格 ${style.material_id} 的 material_conf.beauty_style 或 material_conf.parameter 必须至少有一个非空对象`);
+  }
+  return parameters;
+}
+
 /** 名称的明确性别标记优先，其次使用业务确认的风格偏好；含男女两类则不自动选。 */
 function namedGender(style) {
   if (typeof style?.name !== "string") return undefined;
@@ -98,8 +113,7 @@ function genderStyle(styles, gender, contentType) {
     if (namedGender(style) !== gender) return false;
     if (style.media_type_limit !== 0 && style.media_type_limit !== Number(contentType)) return false;
     if (!["number", "string"].includes(typeof style.material_id)) return false;
-    const parameter = style.material_conf?.parameter;
-    return /^\d+$/.test(String(style.material_id)) && parameter && typeof parameter === "object" && !Array.isArray(parameter) && Object.keys(parameter).length > 0;
+    return /^\d+$/.test(String(style.material_id)) && Boolean(beautyStyleParameters(style));
   });
   if (!candidates.length) {
     throw new WinkError(`未找到适用于${Number(contentType) === 1 ? "图片" : "视频"}的 ${gender} 美容风格（${GENDER_STYLE_NAMES[gender].join(" / ")}或明确的性别标记），请用 --list-styles 查询后通过 --style 手动选择`);
@@ -107,7 +121,7 @@ function genderStyle(styles, gender, contentType) {
   return candidates[crypto.randomInt(candidates.length)];
 }
 
-/** 仅允许选择本次服务端列表中唯一存在且带有有效 parameter 的风格。 */
+/** 仅允许选择本次服务端列表中唯一存在且带有有效美容配置的风格。 */
 function selectBeautyStyle(styles, styleId, { gender, contentType } = {}) {
   if (gender !== undefined) {
     if (styleId !== undefined) throw new WinkError("--gender 与 --style 不能同时使用");
@@ -118,14 +132,11 @@ function selectBeautyStyle(styles, styleId, { gender, contentType } = {}) {
   if (!matches.length) throw new WinkError(`未找到 AI 美容风格 ${styleId}，请用 --list-styles 查询当前可用风格`);
   if (matches.length !== 1) throw new WinkError(`AI 美容风格 ${styleId} 的物料 ID 重复，无法确定提交配置`);
   const style = matches[0];
-  const parameter = style.material_conf?.parameter;
-  if (!parameter || typeof parameter !== "object" || Array.isArray(parameter) || !Object.keys(parameter).length) {
-    throw new WinkError(`AI 美容风格 ${styleId} 的 material_conf.parameter 必须为非空对象`);
-  }
+  requireBeautyStyleParameters(style);
   return style;
 }
 
-/** 按实际媒体类型组装算法参数和权益物料，保留服务端 parameter 的全部字段和值。 */
+/** 按实际媒体类型组装算法参数和权益物料，保留服务端美容配置的全部字段和值。 */
 function buildBeautySubmission(options, style, contentType) {
   if (![1, 2, "1", "2"].includes(contentType)) throw new WinkError("AI 美容仅支持图片 content_type=1 或视频 content_type=2");
   const mediaMode = Number(contentType) - 1;
@@ -141,7 +152,7 @@ function buildBeautySubmission(options, style, contentType) {
   const retouchParams = {};
   const materialIds = [];
   if (style) {
-    retouchParams.beauty_style = style.material_conf.parameter;
+    retouchParams.beauty_style = requireBeautyStyleParameters(style);
     materialIds.push(String(style.material_id));
   }
   if (options.hairSilky) {

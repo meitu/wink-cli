@@ -197,6 +197,51 @@ async function withRandomChoices(choices, fn, beforeChoice = () => {}) {
     assertSubmission(0, image, true, false, false);
     assert.deepStrictEqual(events, [listPath, listPath, "/task/ai_type_config", "upload", "/task/submit", "/task/query"]);
 
+    // 2026-09-20 release 浓颜的真实配置结构（仅字段 fixture，无网络/真实素材投递）。
+    const beautyConfig = { is_adjustable: "1", is_video_adjustable: "0", run_mode: "5" };
+    const currentStyle = style({ material_id: 6720184371, name: "浓颜", material_conf: { beauty_style: beautyConfig } });
+    for (const env of ["pre", "beta", "release"]) for (const file of [image, video]) {
+      for (const parameter of [undefined, null]) {
+        const candidate = { ...currentStyle, material_conf: { beauty_style: beautyConfig, parameter } };
+        reset([candidate]);
+        const selected = await withRandomChoices([], () => invoke([
+          "--style", "6720184371", "--hair-silky", "--beauty-double-chin",
+        ], file, env));
+        assert.strictEqual(selected.code, 0, selected.err);
+        assert.strictEqual(submits.length, 1);
+        assert.strictEqual(JSON.parse(selected.out).results[0].ok, true);
+        assert.deepStrictEqual(JSON.parse(submits[0].type_params), {
+          is_mirror: "0", orientation_tag: 1, preview: 0,
+          retouch_ai_params: JSON.stringify({
+            beauty_style: beautyConfig,
+            hair_silky: { media_mode: file === video ? 1 : 0 },
+            beauty_double_chin: { media_mode: file === video ? 1 : 0 },
+          }),
+        });
+        assert.deepStrictEqual(JSON.parse(submits[0].right_detail), {
+          source: "1", touch_type: "4", function_id: "672", material_id: "6720184371,67206,67207",
+        });
+        assert.deepStrictEqual(events, [listPath, "/task/ai_type_config", "upload", "/task/submit", "/task/query"]);
+      }
+    }
+
+    // 随机候选使用相同解析；图像专用男士素材不能因兼容新字段而被选给视频。
+    const currentMaleStyles = ["少年", "绅士", "浪漫", "硬朗"].map((name, i) => style({
+      material_id: 67900 + i, name, media_type_limit: 1,
+      material_conf: { beauty_style: { run_mode: String(1001 + i) } },
+    }));
+    reset([...currentMaleStyles, currentStyle]);
+    const currentGender = await withRandomChoices([{ max: 1, index: 0 }], () => invoke(["--gender", "female"], video, "release"));
+    assert.strictEqual(currentGender.code, 0, currentGender.err);
+    assert.deepStrictEqual(JSON.parse(JSON.parse(submits[0].type_params).retouch_ai_params), { beauty_style: beautyConfig });
+    assert.strictEqual(JSON.parse(currentGender.out).results[0].beauty_style.material_id, 6720184371);
+    reset([...currentMaleStyles, currentStyle]);
+    const maleVideoUnavailable = await withRandomChoices([], () => invoke(["--gender", "male"], video, "release"));
+    assert.notStrictEqual(maleVideoUnavailable.code, 0);
+    assert.match(maleVideoUnavailable.err, /未找到适用于视频的 male 美容风格/);
+    assert.deepStrictEqual(uploads, []);
+    assert.deepStrictEqual(submits, []);
+
     reset();
     const readable = await capture(() => main(["ai_beauty", "--list-styles", "--api-key", "offline-ai-beauty"], services));
     assert.strictEqual(readable.code, 0, readable.err);
@@ -248,7 +293,7 @@ async function withRandomChoices(choices, fn, beforeChoice = () => {}) {
     }
     for (const [id, items] of [
       ["99999", [style()]],
-      ...["bad JSON", [], {}, null].map(parameter => ["67201", [style({ material_conf: { parameter } })]]),
+      ...["bad JSON", [], {}, null].map(parameter => ["67201", [style({ material_conf: { parameter, beauty_style: parameter } })]]),
     ]) {
       reset(items);
       const failure = await invoke(["--style", id], image);

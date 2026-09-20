@@ -90,10 +90,34 @@ function pageClient(pages) {
   throwsWink(() => selectBeautyStyle([style], "67298"), /未找到.*--list-styles/);
   throwsWink(() => selectBeautyStyle([style, { ...style, material_id: "67299" }], "67299"), /重复/);
   for (const invalid of [undefined, null, {}, [], [1], "{}", 1, true]) {
-    const invalidStyle = { ...style, material_conf: { parameter: invalid, beauty_style: { wrong: true } } };
-    throwsWink(() => selectBeautyStyle([invalidStyle], "67299"), /parameter.*非空对象/);
+    const invalidStyle = { ...style, material_conf: { parameter: invalid, beauty_style: invalid } };
+    throwsWink(() => selectBeautyStyle([invalidStyle], "67299"), /beauty_style.*parameter.*非空对象/);
+    throwsWink(() => buildBeautySubmission(defaults, invalidStyle, 1), /beauty_style.*parameter.*非空对象/);
   }
   throwsWink(() => selectBeautyStyle([{ ...style, material_conf: undefined }], "67299"), /parameter/);
+
+  // 当前接口字段与旧文档字段共用校验/组装，二者均有效时以实际 beauty_style 为准。
+  const currentParameters = freezeDeep({ is_adjustable: "1", is_video_adjustable: "0", run_mode: "5", nested: { PreserveCase: [0, false] } });
+  for (const conf of [
+    { beauty_style: currentParameters },
+    { beauty_style: currentParameters, parameter: null },
+    { beauty_style: currentParameters, parameter },
+    { beauty_style: currentParameters, parameter: "invalid" },
+    ...[undefined, null, {}, [], "{}", false, 1].map(beauty_style => ({ beauty_style, parameter: currentParameters })),
+  ]) {
+    const candidate = freezeDeep({ ...style, name: "浓颜", material_conf: { ...conf, ignored_metadata: "do not submit" } });
+    assert.strictEqual(selectBeautyStyle([candidate], "67299"), candidate);
+    for (const contentType of [1, 2]) {
+      assert.strictEqual(withRandomIndex(0, 1, () => selectBeautyStyle([candidate], undefined, { gender: "female", contentType })), candidate);
+      const result = buildBeautySubmission({ ...defaults, hairSilky: true, beautyDoubleChin: true }, candidate, contentType);
+      assert.deepStrictEqual(JSON.parse(result.params.retouch_ai_params), {
+        beauty_style: currentParameters,
+        hair_silky: { media_mode: contentType - 1 },
+        beauty_double_chin: { media_mode: contentType - 1 },
+      });
+      assert.strictEqual(result.rightDetail.material_id, "67299,67206,67207");
+    }
+  }
 
   // gender 只接受明确值，清理复制文本的边缘空白和零宽字符，不改变旧模式的结果结构。
   for (const gender of ["male", "female"]) {

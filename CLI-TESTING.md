@@ -54,13 +54,13 @@ AI动漫的风格和效果 ID 必须与对应物料一致；示例的 `xinhaiche
 1.12.0 起先调用 `GET /material/ai_beauty/list`，按 `count=50`、`data.cursor` 读取完整 `data.item_list`；查询复用 CLI 域名、`api_key`、客户端公共参数，pre 传 `is_test=1`，beta/release 传 `0`。不移植上传 SDK 的签名算法，不将 CLI 凭据发往网站或 mock 域名。
 
 - `--list-styles [--json]` 无需输入素材，只获取列表，不调用能力配置、上传或投递。JSON 的 `styles` 保留列表项。
-- `-gender` / `--gender` 接受 `male` / `female`，与 `--style`、`--list-styles` 互斥。列表接口没有已确认的性别字段，CLI 使用业务指定的名称偏好：`male` 匹配“少年、绅士、硬朗、浪漫”，`female` 匹配“自然、减龄、裸感、女高、浓颜、欧美、紧致”。`name` 中明确的“男/女、male/female”优先，英文按词边界匹配，因此“男士自然”仍属于男性候选；同时包含男女明确标记，或没有明确标记却同时命中男女关键词的名称不参与匹配。先按实际媒体过滤 `media_type_limit`、有效数字物料 ID、非空 `material_conf.parameter`，CLI 1.12.1 起再用 `crypto.randomInt` 从全部适用候选中等概率随机选一个；每个输入独立抽取，未命中时在上传前失败并提示手选。同一任务的充值重投复用既有参数，不重新随机选择；显式 `--style` 不受影响。不会推断 `run_mode` 的性别含义，也不把 `gender` 加到接口请求。成功 JSON 的 `results[].beauty_style` 记录 `material_id`、`name`、`gender`。
+- `-gender` / `--gender` 接受 `male` / `female`，与 `--style`、`--list-styles` 互斥。列表接口没有已确认的性别字段，CLI 使用业务指定的名称偏好：`male` 匹配“少年、绅士、硬朗、浪漫”，`female` 匹配“自然、减龄、裸感、女高、浓颜、欧美、紧致”。`name` 中明确的“男/女、male/female”优先，英文按词边界匹配，因此“男士自然”仍属于男性候选；同时包含男女明确标记，或没有明确标记却同时命中男女关键词的名称不参与匹配。先按实际媒体过滤 `media_type_limit`、有效数字物料 ID、有效美容配置（优先非空 `material_conf.beauty_style`，兼容非空 `material_conf.parameter`），CLI 1.12.1 起再用 `crypto.randomInt` 从全部适用候选中等概率随机选一个；每个输入独立抽取，未命中时在上传前失败并提示手选。同一任务的充值重投复用既有参数，不重新随机选择；显式 `--style` 不受影响。不会推断 `run_mode` 的性别含义，也不把 `gender` 加到接口请求。成功 JSON 的 `results[].beauty_style` 记录 `material_id`、`name`、`gender`。
 - `--style <material_id>` 不设默认值；至少选择风格或开启一个附加效果。`--hair-silky`、`--beauty-double-chin` 默认关闭，也接受显式 `true/false`、`1/0`。媒体限制使用 `media_type_limit`：0 通用、1 图片、2 视频。
-- `type_params` 固定携带 `is_mirror:"0"`、`orientation_tag:1`、`preview:0`。`retouch_ai_params` 为 JSON 字符串，其中 `beauty_style` 直接取 `material_conf.parameter`，不改键名、值类型或风格数值。开启的附加效果分别放到 `hair_silky`、`beauty_double_chin`，图片 `media_mode=0`、视频 `1`。
+- `type_params` 固定携带 `is_mirror:"0"`、`orientation_tag:1`、`preview:0`。`retouch_ai_params` 为 JSON 字符串，其中 `beauty_style` 从 CLI 1.12.2 起优先取非空对象 `material_conf.beauty_style`，若其无有效值则兼容非空对象 `material_conf.parameter`。两个字段都有效时仅取前者；不合并对象，不改键名、值类型或风格数值。两个字段都无效时拒绝上传/投递。开启的附加效果分别放到 `hair_silky`、`beauty_double_chin`，图片 `media_mode=0`、视频 `1`。
 - `right_detail` 参考 website 的 `ai-retouch/ticket.ts`：`source:"1"`、`touch_type:"4"`、`function_id:"672"`；`material_id` 按风格 ID、发质柔顺 `67206`、去双下巴 `67207` 的顺序组合，仅包含本次选择的效果。图/视频算法仍使用 CF 映射 40/39，并经过当前 `ai_type_config` 校验。
-- 旧 `--retouch-params` 入口会提示迁移到 `--list-styles` / `--style`，不继续投递缺少 `beauty_style` 层级的配置。网站当前读取的 `materialConf.beautyStyle` 与本次接口文档不同，本实现按用户提供的 `material_conf.parameter` 协议处理。
+- 旧 `--retouch-params` 入口会提示迁移到 `--list-styles` / `--style`，不继续投递缺少 `beauty_style` 层级的配置。网站读取的 `materialConf.beautyStyle` 对应原始接口的 `material_conf.beauty_style`；CLI 1.12.2 统一手选校验、随机候选过滤和提交构造的字段解析。
 
-离线测试见 `tests/test_ai_beauty.js`、`tests/test_ai_beauty_flow.js`，覆盖分页后随机选择非首项、男女候选范围、混合媒体独立抽取、媒体限制、嵌套 JSON、开关组合、环境和错误时禁止上传。随机测试控制抽样索引，不依赖概率断言。2026-09-18 使用已有 CLI 凭据只读请求正式/预发布风格列表，均返回 `HTTP 400, code=10108, 查询失败`；CLI 网关的实际素材接口调用条件待服务端确认。没有执行真实美容任务或消耗美豆。
+离线测试见 `tests/test_ai_beauty.js`、`tests/test_ai_beauty_flow.js`，覆盖分页后随机选择非首项、男女候选范围、混合媒体独立抽取、媒体限制、嵌套 JSON、开关组合、环境和错误时禁止上传。随机测试控制抽样索引，不依赖概率断言。另覆盖真实“浓颜”响应结构（`beauty_style` 存在，`parameter` 缺失或 null）、两个字段优先级与无效配置、图片/视频和附加开关、旧字段兼容，以及男士图片风格不得用于视频。2026-09-20 使用已有凭据只读请求 release 风格列表，已返回 13 个风格，均提供非空 `material_conf.beauty_style`；全部可完成本地参数组装。“浓颜”允许图片/视频，四个男士偏好风格目前仅图片可用。2026-09-18 的 `HTTP 400 / code=10108` 保留为历史观测。本次没有上传、投递真实美容任务或消耗美豆。
 
 ## 视频全能修复 Pro
 
