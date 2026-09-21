@@ -28,6 +28,7 @@ const path = require("path");
 const { WinkClient, responseOk, dataObject } = require("../src/wink_client");
 const { credentialFile, ENVIRONMENTS, DEFAULT_ENV } = require("../src/cli");
 const { cmdSkill } = require("../src/connector_skill");
+const { openBrowser } = require("../src/open_browser");
 
 const VERSION = require("../package.json").version;
 
@@ -102,6 +103,9 @@ async function cmdLogin(argv) {
   // authUrl() 为纯本地计算，不发起网络请求，保证 10 秒内必定输出链接。
   const link = client.authUrl();
   process.stdout.write(`\n${link.auth_url}\n\n`);
+  // Direct Skill execution has no connector panel to open the URL. Do not gate
+  // on isTTY: agent tools and background jobs normally use pipes for output.
+  if (argv.includes("--open-browser")) openBrowser(link.auth_url);
   process.stderr.write("请在浏览器完成 Wink 授权，完成后无需回复，等待自动继续…\n");
 
   const deadline = Date.now() + LOGIN_TIMEOUT_SECONDS * 1000;
@@ -183,7 +187,7 @@ const HELP = [
   "用法: wink-connector <命令> [--base-url=<url>] [--json]",
   "",
   "命令:",
-  "  login      授权登录（输出授权链接并轮询换取 api_key）",
+  "  login      授权登录（--open-browser 自动打开系统浏览器并轮询）",
   "  status     检查登录状态（只读、无副作用）",
   "  logout     退出登录并清理本地凭证",
   "  doctor     环境自检（Node 版本、CLI 版本、登录状态）",
