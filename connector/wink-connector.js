@@ -27,6 +27,7 @@ const fs = require("fs");
 const path = require("path");
 const { WinkClient, responseOk, dataObject } = require("../src/wink_client");
 const { credentialFile, ENVIRONMENTS, DEFAULT_ENV } = require("../src/cli");
+const { cmdSkill } = require("../src/connector_skill");
 
 const VERSION = require("../package.json").version;
 
@@ -154,6 +155,8 @@ function cmdDoctor(argv) {
     node: process.version,
     node_min: MIN_NODE_MAJOR,
     cli_version: VERSION,
+    skill_version: VERSION,
+    skill_command: process.platform === "win32" ? "wink-connector.cmd skill" : "wink-connector skill",
     base_url: baseUrl,
     logged_in: Boolean(apiKey),
     credential_file: credentialFile(baseUrl),
@@ -184,6 +187,7 @@ const HELP = [
   "  status     检查登录状态（只读、无副作用）",
   "  logout     退出登录并清理本地凭证",
   "  doctor     环境自检（Node 版本、CLI 版本、登录状态）",
+  "  skill      读取当前 CLI 的使用 Skill（--reference http-api / --json）",
   "  version    输出版本号",
   "  help       显示本帮助",
   "",
@@ -205,6 +209,8 @@ async function main(argv) {
       return cmdLogout(rest);
     case "doctor":
       return cmdDoctor(rest);
+    case "skill":
+      return cmdSkill(rest);
     case "version":
     case "--version":
     case "-v":
@@ -244,5 +250,6 @@ module.exports = {
   cmdStatus,
   cmdLogout,
   cmdDoctor,
+  cmdSkill,
   main,
 };

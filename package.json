@@ -1,6 +1,6 @@
 {
   "name": "wink-cli",
-  "version": "1.12.2",
+  "version": "1.13.0",
   "description": "Wink CLI for cloud image and video processing: login, media validation, upload, submit, poll and return result URLs.",
   "type": "commonjs",
   "main": "src/cli.js",
@@ -11,6 +11,7 @@
   "files": [
     "src",
     "connector",
+    "skills",
     "wink-cli",
     "wink-cli.cmd",
     "README.md",
@@ -22,7 +23,7 @@
   "scripts": {
     "start": "node src/cli.js",
     "cli": "node src/cli.js",
-    "test": "node tests/test_upload_sdk.js && node tests/test_duration_limits.js && node tests/test_mp4_metadata.js && node tests/test_cli.js && node tests/test_cli_progress.js && node tests/test_cloud_tools.js && node tests/test_ai_beauty.js && node tests/test_ai_beauty_flow.js && node tests/test_video_repair.js && node tests/test_watermark_result.js && node tests/test_cli_flow.js && node tests/test_cli_env.js && node tests/test_install.js && node tests/test_beans.js && node tests/test_open_browser.js && node tests/test_device_id.js",
+    "test": "node tests/test_upload_sdk.js && node tests/test_duration_limits.js && node tests/test_mp4_metadata.js && node tests/test_cli.js && node tests/test_cli_progress.js && node tests/test_cloud_tools.js && node tests/test_ai_beauty.js && node tests/test_ai_beauty_flow.js && node tests/test_video_repair.js && node tests/test_watermark_result.js && node tests/test_cli_flow.js && node tests/test_cli_env.js && node tests/test_install.js && node tests/test_beans.js && node tests/test_open_browser.js && node tests/test_device_id.js && node tests/test_connector_skill.js && node tests/test_agent_skills.js",
     "prepublishOnly": "npm test",
     "pack:dry": "npm pack --dry-run"
   },

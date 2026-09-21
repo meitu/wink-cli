@@ -95,7 +95,7 @@ const MAIN_HELP = [
   ...Object.entries(COMMANDS).map(([command, tool]) => `  ${command.padEnd(24)}${tool.name}（云端工具箱）`),
   "",
   "安装命令:",
-  "  install                 安装当前版本到 npm 全局目录（详见 wink-cli install --help）",
+  "  install                 安装 CLI 与 Agent 使用 Skill（详见 wink-cli install --help）",
   "",
   "工具选项:",
   "  --level <n>                  档位编号（单档位功能可省略，默认值见子命令帮助）",

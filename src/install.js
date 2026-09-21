@@ -4,19 +4,24 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { installAgentSkills } = require("./agent_skills");
 
-const INSTALL_HELP = `wink-cli install — 安装当前版本到 npm 全局目录
+const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Agent 安装使用 Skill
 
 用法:
   npx github:meitu/wink-cli install
-  wink-cli install [--prefix <目录>]
+  wink-cli install [--prefix <目录>] [--skill-dir <目录> | --skip-skills]
 
 选项:
   --prefix <目录>   自定义 npm 安装前缀（需要自行将命令目录加入 PATH）
+  --skill-dir <目录> 指定 Skill 根目录，在其下安装 wink-cli-usage（代替自动检测）
+  --skip-skills      只安装 CLI，不写入 Agent 技能目录
   -h, --help        显示本帮助
 
 安装后使用 wink-cli --help。需要 Node.js 和 npm；从 GitHub 安装还需要 Git
-及仓库访问权限。安装不会登录或投递云处理任务。`;
+及仓库访问权限。默认检测 Codex、Cursor、Claude Code、WorkBuddy 的已有配置目录。
+Skill 入口读取当前安装 CLI 的完整说明；保留用户修改过或非本安装器创建的同名 Skill。
+安装不会登录或投递云处理任务。`;
 
 function npmCommand() {
   // npx supplies npm_execpath; invoking it with Node also avoids Windows .cmd quoting.
@@ -32,11 +37,16 @@ function npmCommand() {
 }
 
 function installCli(flags = {}) {
-  const unknown = Object.keys(flags).filter(key => !["prefix", "help", "h"].includes(key));
+  const unknown = Object.keys(flags).filter(key => !["prefix", "skill-dir", "skip-skills", "help", "h"].includes(key));
   if (unknown.length) throw new Error(`install 不支持参数: ${unknown.map(key => `--${key}`).join(", ")}`);
   if (flags.prefix !== undefined && (typeof flags.prefix !== "string" || !flags.prefix.trim())) {
     throw new Error("--prefix 需要指定安装目录");
   }
+  if (flags["skill-dir"] !== undefined && (typeof flags["skill-dir"] !== "string" || !flags["skill-dir"].trim())) {
+    throw new Error("--skill-dir 需要指定 Skill 根目录");
+  }
+  if (flags["skip-skills"] !== undefined && flags["skip-skills"] !== true) throw new Error("--skip-skills 不接受参数值");
+  if (flags["skip-skills"] && flags["skill-dir"]) throw new Error("--skip-skills 与 --skill-dir 不能同时使用");
   const prefixArgs = flags.prefix ? ["--prefix", path.resolve(flags.prefix)] : [];
   const [executable, leadingArgs] = npmCommand();
   function npm(args, inherit = false) {
@@ -66,8 +76,30 @@ function installCli(flags = {}) {
       throw new Error("npm pack 未返回有效的安装包文件名");
     }
     npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
-    process.stdout.write(`安装完成。命令目录: ${binDir}\n`);
+    process.stdout.write(`CLI 安装完成。命令目录: ${binDir}\n`);
     process.stdout.write("请在终端运行 wink-cli --help。若提示找不到命令，请将上述命令目录加入 PATH 后重新打开终端。\n");
+    if (!flags["skip-skills"]) {
+      try {
+        const globalRoot = npm(["root", "--global", ...prefixArgs]).trim();
+        const results = installAgentSkills({
+          packageRoot: path.join(globalRoot, "wink-cli"), skillDir: flags["skill-dir"],
+        });
+        const labels = { installed: "已安装", updated: "已更新", unchanged: "已是当前入口", skipped: "跳过", error: "失败" };
+        for (const result of results) {
+          process.stdout.write(`Skill ${labels[result.status]} [${result.agents.join(" / ")}]: ${result.directory}${result.message ? `（${result.message}）` : ""}\n`);
+        }
+        if (!results.length) process.stdout.write("未检测到支持的 Agent 配置目录；可用 --skill-dir 指定技能根目录后重新安装。\n");
+        if (results.some(result => ["installed", "updated"].includes(result.status))) {
+          process.stdout.write("请刷新 Agent 技能列表或新建会话；后续 Skill 内容随 CLI 升级，下次读取生效。\n");
+        }
+        if (results.some(result => result.status === "error")) {
+          process.stderr.write("CLI 已安装，但部分 Agent Skill 写入失败，请检查上述目录后重试。\n");
+          return 1;
+        }
+      } catch (error) {
+        throw new Error(`CLI 已安装，但 Agent Skill 安装失败：${error.message}`);
+      }
+    }
     return 0;
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

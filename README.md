@@ -118,6 +118,8 @@ wink-connector status     # 检查登录态（只读、无副作用），输出 
 wink-connector logout     # 清理本地登录凭据
 wink-connector doctor     # 环境自检：Node 版本、CLI 版本、登录状态（--json 输出结构化结果）
 wink-connector version    # 输出版本号
+wink-connector skill      # 读取与当前 CLI 同版本的完整使用 Skill（支持 --json）
+wink-connector skill --reference http-api  # 读取当前版本的排障参考
 ```
 
 - 默认使用正式环境 `release`，与业务命令的 `--env` 默认值一致；联调可临时用 `WINK_CLI_ENV=pre|beta` 或 `WINK_CLI_BASE_URL` 覆盖。
@@ -125,17 +127,52 @@ wink-connector version    # 输出版本号
 - Windows 下 npm 会生成 `wink-connector.cmd`。
 - `logout` 只清理本地凭据；服务端未提供会话撤销接口，远端会话不会因此吊销。
 
+### Skill 随 CLI 升级（1.13.0 起）
+
+连接器的完整使用说明统一维护在 [skills/wink-cli-usage/SKILL.md](skills/wink-cli-usage/SKILL.md)，参考文档放在同目录的 `references/`，一起进入 npm 安装包。`wink-connector skill` 读取当前安装位置的文档，输出版本自动取自 `package.json`，不依赖工作目录，也不登录、联网或修改 WorkBuddy 缓存。`--json` 返回 `name`、`cli_version`、`skill_version`、`reference` 和 `content`。
+
+WorkBuddy 连接器需先更新一次到带动态读取入口的 1.0.6（要求 CLI ≥1.13.0）。此后每次新任务先通过该入口读取 Skill；本机 CLI 安装升级后，下次读取即获得新文档。Git 推送本身不会更新用户已安装的 CLI，已有会话也不会自动替换读过的内容。可通过现有安装脚本或 `npx github:meitu/wink-cli install` 升级；连接器最低版本检查仍遵循自己的门槛，不表示每次重连都安装最新版。
+
+发布时先发布 CLI，再发布首次迁移的连接器。此后仅更新此通用 Skill 的内容无需重新上传连接器；如果读取协议、最低 CLI 要求或连接器元数据改变，仍需发连接器新版本。各专家和独立业务 Skill 的上架包继续在 wink-agents 维护，不在这个随 CLI 更新的范围内。
+
+### 安装到 Agent 技能目录
+
+`npx github:meitu/wink-cli install` 在 npm 安装成功后，自动检测本机已有的 Agent 配置目录，并安装 `wink-cli-usage` 入口：
+
+| 检测到的配置目录 | Skill 安装位置 |
+|---|---|
+| `${CODEX_HOME}` 或 `~/.codex`；`~/.cursor` | `~/.agents/skills/wink-cli-usage/`，Codex 与 Cursor 共用一份 |
+| 已有 `~/.agents/skills` | 同上，作为通用入口 |
+| `${CLAUDE_CONFIG_DIR}` 或 `~/.claude` | 对应配置目录的 `skills/wink-cli-usage/` |
+| `${WORKBUDDY_CONFIG_DIR}` 或 `~/.workbuddy` | 对应配置目录的 `skills/wink-cli-usage/`，补齐本地导入元数据 |
+
+环境变量已设置时以其目录为准；未设置时检查表中的默认位置。仅创建已检测 Agent 的技能子目录，不创建未安装 Agent 的配置根目录。未检测到目标时仍完成 CLI 安装，并提示使用自定义目录。目录约定参考 [Codex](https://learn.chatgpt.com/docs/build-skills)、[Cursor](https://cursor.com/docs/skills)、[Claude Code](https://code.claude.com/docs/en/claude-directory)；WorkBuddy 与本项目现有本地导入器保持一致。同一实际目录会去重；部分 Agent 也扫描其他产品的目录，跨产品的列表展示由对应 Agent 决定。
+
+```sh
+npx github:meitu/wink-cli install
+# 指定技能根目录，代替自动检测；会在该目录下创建 wink-cli-usage/
+npx github:meitu/wink-cli install --skill-dir "/absolute/agent/skills"
+# 只安装 CLI
+npx github:meitu/wink-cli install --skip-skills
+```
+
+入口使用当前 Node.js 与 **npm 全局安装包**的绝对路径，不指向临时 npx 缓存，也不依赖 PATH 中同名的旧 CLI。它只读取说明；执行媒体处理前还需确认业务 CLI 版本一致。后续 CLI 升级后再次读取即可获取完整新版说明；重新执行 `install` 也会更新入口路径。安装完成后刷新 Agent 技能列表或新建会话。
+
+安装器使用 `.wink-cli-managed.json` 记录自己写入的文件摘要，仅更新内容未被修改的受管入口。已有的手写同名 Skill、符号链接或用户新增文件会保留并提示跳过；不影响原有 `wink-cli` 等其他 Skill。某一 Agent 目录写入失败不妨碍其他目录，最终会返回失败状态并列出路径，CLI 本身仍已安装。此流程不登录、不投递任务，也不会注册 WorkBuddy 连接器或专家。
+
 ## 项目结构
 
 ```text
 src/cli.js           命令行入口、登录和流程编排
 src/install.js       安装当前版本到 npm 全局目录
+src/agent_skills.js  检测 Agent 技能目录、安装与更新动态读取入口
 src/cloud_tools.js   功能、档位和专属参数
 src/wink_client.js   云端 API 客户端和下载
 src/upload_sdk.js    上传协议
 src/mp4_metadata.js  MP4/MOV 元信息读取
 src/cli_progress.js  单行进度显示
 connector/           WorkBuddy 连接器壳脚本命令层（wink-connector）
+skills/              随 CLI 发布的完整使用 Skill 与排障参考
 tests/               CLI、协议及媒体读取测试
 wink-cli / wink-cli.cmd      本地启动脚本
 ```
