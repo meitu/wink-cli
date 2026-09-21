@@ -18,7 +18,6 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { createHash } = require("crypto");
 const { execFileSync } = require("child_process");
 const { openBrowser } = require("./open_browser");
 const { imageSize } = require("image-size");
@@ -37,18 +36,11 @@ const {
 } = require("./wink_client");
 
 const VERSION = require("../package.json").version;
-const ENVIRONMENTS = Object.freeze({
-  pre: "https://precliapi-winkcut.meitu.com",
-  beta: "https://betacliapi-winkcut.meitu.com",
-  release: "https://cliapi-winkcut.meitu.com",
-});
-const DEFAULT_ENV = "release";
+const { ENVIRONMENTS, DEFAULT_ENV, CREDENTIAL_DIR, credentialFile } = require("./runtime_config");
 const DEFAULT_LEVEL = 2; // 与参考实现一致：2 = 超清（默认）
 const LOGIN_TIMEOUT_SECONDS = 300;
 const POLL_INTERVAL_SECONDS = 3;
 const POLL_TIMEOUT_SECONDS = 600;
-// 保留历史凭据目录，避免项目精简后要求已有用户重新授权。
-const CREDENTIAL_DIR = path.join(os.homedir(), ".wink-mcp-server", "cli-credentials");
 
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
 const VIDEO_EXTS = new Set(["mp4", "mov", "m4v", "avi", "mkv", "webm", "flv", "wmv", "3gp", "mpeg", "mpg", "ts"]);
@@ -93,6 +85,13 @@ const MAIN_HELP = [
   "",
   "功能命令:",
   ...Object.entries(COMMANDS).map(([command, tool]) => `  ${command.padEnd(24)}${tool.name}（云端工具箱）`),
+  "",
+  "管理命令:",
+  "  login                   授权登录（--open-browser 自动打开浏览器）",
+  "  status                  查看本地登录状态",
+  "  logout                  退出登录，清理本地凭据",
+  "  doctor                  检查环境与版本（支持 --json）",
+  "  skill                   读取当前 CLI 的使用说明（支持 --json）",
   "",
   "安装命令:",
   "  install                 安装 CLI 与 Agent 使用 Skill（详见 wink-cli install --help）",
@@ -312,11 +311,6 @@ function uniqueOutputPath(dir, inputFile, remoteUrl, force, used) {
   }
   used.add(candidate);
   return candidate;
-}
-
-function credentialFile(baseUrl) {
-  const scope = createHash("sha256").update(baseUrl.replace(/\/$/, "")).digest("hex").slice(0, 24);
-  return path.join(CREDENTIAL_DIR, `${scope}.api_key`);
 }
 
 function readCredential(baseUrl) {
@@ -702,6 +696,19 @@ async function main(argv, services = {}) {
     return 0;
   }
   const command = _[0];
+  if (["login", "auth", "status", "logout", "unauth", "unAuth", "doctor", "skill", "version"].includes(command)) {
+    // Preserve argument order and duplicates for the strict Skill parser. Route
+    // auth/doctor through the same environment as cloud commands.
+    const rest = argv.filter((arg, index) => index !== argv.indexOf(command));
+    const args = [];
+    for (let i = 0; i < rest.length; i += 1) {
+      if (rest[i] === "--env" || rest[i] === "--base-url") { i += 1; continue; }
+      if (rest[i].startsWith("--env=") || rest[i].startsWith("--base-url=")) continue;
+      args.push(rest[i]);
+    }
+    if (command !== "skill" && command !== "version") args.push(`--base-url=${environment.baseUrl}`);
+    return require("./management_commands").main([command, ...args]);
+  }
   if (command === "install") {
     const { INSTALL_HELP, installCli } = require("./install");
     if (wantsHelp) {

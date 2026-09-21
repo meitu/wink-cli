@@ -108,30 +108,30 @@ CLI 不推断性别偏好；需要显式指定 `--gender`、`--style` 或至少�
 
 为兼容已有 CLI 安装，登录凭据与设备标识仍沿用 `~/.wink-mcp-server/` 历史目录。完整环境说明、参数示例及退出码见 [CLI-TESTING.md](CLI-TESTING.md)。
 
-## 连接器命令（wink-connector）
+## 授权和环境管理命令
 
-面向 WorkBuddy 连接器（CLI+Skill 方案）的壳脚本命令层，随包一起安装，只包装既有能力，不改动业务逻辑：
+从 1.14.0 起，授权、环境检查、Skill 读取和云处理统一使用 `wink-cli`：
 
 ```sh
-wink-connector login      # 授权登录：10 秒内输出 https 授权链接，并轮询换取 api_key
-wink-connector status     # 检查登录态（只读、无副作用），输出 WINK_AUTH=connected / disconnected
-wink-connector logout     # 清理本地登录凭据
-wink-connector doctor     # 环境自检：Node 版本、CLI 版本、登录状态（--json 输出结构化结果）
-wink-connector version    # 输出版本号
-wink-connector skill      # 读取与当前 CLI 同版本的完整使用 Skill（支持 --json）
-wink-connector skill --reference http-api  # 读取当前版本的排障参考
+wink-cli login --open-browser  # 自动打开授权页，保留完整链接，并持续轮询登录结果
+wink-cli status     # 检查登录态（只读、无副作用），输出 WINK_AUTH=connected / disconnected
+wink-cli logout     # 清理本地登录凭据
+wink-cli doctor     # 环境自检：Node 版本、CLI 版本、登录状态（--json 输出结构化结果）
+wink-cli version    # 输出版本号
+wink-cli skill      # 读取与当前 CLI 同版本的完整使用 Skill（支持 --json）
+wink-cli skill --reference http-api  # 读取当前版本的排障参考
 ```
 
-- 默认使用正式环境 `release`，与业务命令的 `--env` 默认值一致；联调可临时用 `WINK_CLI_ENV=pre|beta` 或 `WINK_CLI_BASE_URL` 覆盖。
+- 默认使用正式环境 `release`，与业务命令的 `--env` 默认值一致；联调时统一用内部参数 `--env pre|beta`；自定义地址用 `--base-url`，不能与 `--env` 同用。
 - 凭据落盘位置与业务命令完全一致（`~/.wink-mcp-server/cli-credentials/`），登录态跨进程重启有效。
-- Windows 下 npm 会生成 `wink-connector.cmd`。
+- Windows 下 npm 会生成 `wink-cli.cmd`。
 - `logout` 只清理本地凭据；服务端未提供会话撤销接口，远端会话不会因此吊销。
 
 ### Skill 随 CLI 升级（1.13.0 起）
 
-连接器的完整使用说明统一维护在 [skills/wink-cli-usage/SKILL.md](skills/wink-cli-usage/SKILL.md)，参考文档放在同目录的 `references/`，一起进入 npm 安装包。`wink-connector skill` 读取当前安装位置的文档，输出版本自动取自 `package.json`，不依赖工作目录，也不登录、联网或修改 WorkBuddy 缓存。`--json` 返回 `name`、`cli_version`、`skill_version`、`reference` 和 `content`。
+连接器的完整使用说明统一维护在 [skills/wink-cli-usage/SKILL.md](skills/wink-cli-usage/SKILL.md)，参考文档放在同目录的 `references/`，一起进入 npm 安装包。`wink-cli skill` 读取当前安装位置的文档，输出版本自动取自 `package.json`，不依赖工作目录，也不登录、联网或修改 WorkBuddy 缓存。`--json` 返回 `name`、`cli_version`、`skill_version`、`reference` 和 `content`。
 
-WorkBuddy 连接器需先更新一次到带动态读取入口的 1.0.6（要求 CLI ≥1.13.0）。此后每次新任务先通过该入口读取 Skill；本机 CLI 安装升级后，下次读取即获得新文档。Git 推送本身不会更新用户已安装的 CLI，已有会话也不会自动替换读过的内容。可通过现有安装脚本或 `npx github:meitu/wink-cli install` 升级；连接器最低版本检查仍遵循自己的门槛，不表示每次重连都安装最新版。
+WorkBuddy 使用本批统一命令配置时，要求 CLI ≥1.14.0。此后每次新任务先通过该入口读取 Skill；本机 CLI 安装升级后，下次读取即获得新文档。Git 推送本身不会更新用户已安装的 CLI，已有会话也不会自动替换读过的内容。可通过现有安装脚本或 `npx github:meitu/wink-cli install` 升级；连接器最低版本检查仍遵循自己的门槛，不表示每次重连都安装最新版。
 
 发布时先发布 CLI，再发布首次迁移的连接器。此后仅更新此通用 Skill 的内容无需重新上传连接器；如果读取协议、最低 CLI 要求或连接器元数据改变，仍需发连接器新版本。各专家和独立业务 Skill 的上架包继续在 wink-agents 维护，不在这个随 CLI 更新的范围内。
 
@@ -171,7 +171,7 @@ src/wink_client.js   云端 API 客户端和下载
 src/upload_sdk.js    上传协议
 src/mp4_metadata.js  MP4/MOV 元信息读取
 src/cli_progress.js  单行进度显示
-connector/           WorkBuddy 连接器壳脚本命令层（wink-connector）
+connector/           旧 wink-connector 命令兼容入口
 skills/              随 CLI 发布的完整使用 Skill 与排障参考
 tests/               CLI、协议及媒体读取测试
 wink-cli / wink-cli.cmd      本地启动脚本
@@ -186,3 +186,5 @@ npm pack
 ```
 
 测试使用本地模拟接口，不投递真实云处理。npm 包包含源码、启动脚本和使用文档；`node_modules`、测试素材及历史处理结果不打入发布包。当前运行依赖仅 `image-size`，Node.js 仍需用户安装。
+
+兼容旧配置：`wink-connector` 暂时保留为管理命令的兼容入口，复用相同实现与凭据；新配置统一使用 `wink-cli`。

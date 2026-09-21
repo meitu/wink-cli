@@ -70,8 +70,8 @@ function quoteCommandArgument(value, platform) {
 }
 
 function renderAgentSkill(packageRoot, nodePath, platform) {
-  const connector = path.join(packageRoot, "connector", "wink-connector.js");
-  const command = `${platform === "win32" ? "& " : ""}${quoteCommandArgument(nodePath, platform)} ${quoteCommandArgument(connector, platform)} skill`;
+  const cli = path.join(packageRoot, "src", "cli.js");
+  const command = `${platform === "win32" ? "& " : ""}${quoteCommandArgument(nodePath, platform)} ${quoteCommandArgument(cli, platform)} skill`;
   return fs.readFileSync(TEMPLATE, "utf8")
     .replace("{{SHELL}}", platform === "win32" ? "powershell" : "bash")
     .replace("{{READ_COMMAND}}", () => command);
@@ -172,7 +172,7 @@ function installAgentSkills({ packageRoot, home = os.homedir(), env = process.en
   if (!packageRoot || !path.isAbsolute(packageRoot)) throw new Error("CLI 安装包目录必须为绝对路径");
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
   if (pkg.name !== "wink-cli" || pkg.version !== expectedVersion) throw new Error(`已安装 CLI 版本不匹配，要求 ${expectedVersion}`);
-  for (const file of ["connector/wink-connector.js", "skills/wink-cli-usage/SKILL.md"]) {
+  for (const file of ["src/cli.js", "skills/wink-cli-usage/SKILL.md"]) {
     if (!fs.statSync(path.join(packageRoot, file)).isFile()) throw new Error(`CLI 安装包缺少 ${file}`);
   }
   const content = renderAgentSkill(packageRoot, nodePath, platform);

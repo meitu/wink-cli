@@ -1,6 +1,6 @@
 # HTTP 排障参考（随 CLI 发布）
 
-通过 `wink-connector skill --reference http-api` 读取当前安装版本的参考；加 `--json` 可同时获取 `cli_version` 和 `skill_version`。以下为 CLI 当前实现的协议摘要，不是独立直连接口教程。具体请求与错误以当前 CLI 实际输出为准，不猜测服务端配置、错误码或账号权限。
+通过 `wink-cli skill --reference http-api` 读取当前安装版本的参考；加 `--json` 可同时获取 `cli_version` 和 `skill_version`。以下为 CLI 当前实现的协议摘要，不是独立直连接口教程。具体请求与错误以当前 CLI 实际输出为准，不猜测服务端配置、错误码或账号权限。
 
 ## 正常流程
 
@@ -28,9 +28,9 @@
 | beta | `https://betacliapi-winkcut.meitu.com` |
 | pre | `https://precliapi-winkcut.meitu.com` |
 
-业务命令用内部 `--env` 参数选择环境；连接器支持 `WINK_CLI_ENV`，必要时可用 `WINK_CLI_BASE_URL` 或其 `--base-url=` 覆盖。不要只改连接器环境而仍将业务命令留在默认环境。环境选项不作为面向普通用户的帮助内容展示。
+管理命令和业务命令统一用内部 `--env` 参数选择环境，必要时可单独用 `--base-url` 指定地址，两者不能同时使用。旧 `wink-connector` 兼容入口仍支持历史环境变量；新 `wink-cli` 入口不依赖这些变量。授权、状态查询与业务处理必须使用相同环境。环境选项不作为面向普通用户的帮助内容展示。
 
-凭据沿用 `~/.wink-mcp-server/cli-credentials/` 历史目录，按接口域名区分。日常只使用 `wink-connector doctor --json` 或 `status` 判断本地凭据状态，在线有效性由服务端判断，不读取、回显或写入对话。发现未登录或授权明确失效时使用连接器授权流程，面板不可用时执行 `wink-connector login` 并等待同一进程完成。
+凭据沿用 `~/.wink-mcp-server/cli-credentials/` 历史目录，按接口域名区分。日常只使用 `wink-cli doctor --json` 或 `status` 判断本地凭据状态，在线有效性由服务端判断，不读取、回显或写入对话。发现未登录或授权明确失效时使用连接器授权流程，面板不可用时执行 `wink-cli login` 并等待同一进程完成。
 
 `/init/exchange` 在浏览器回调前可能返回 `20001`；应保留同一次 `once_code` 持续等待当前登录流程，不因每次等待提示都生成新码，也不跨环境交换。连接器的授权等待上限为300秒，不据此推测服务端授权码有效期。
 

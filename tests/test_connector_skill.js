@@ -25,7 +25,7 @@ try {
   const home = path.join(temp, "isolated home");
   fs.mkdirSync(home);
   function run(args) {
-    const result = spawnSync(process.execPath, ["--require", guard, path.join(root, "connector/wink-connector.js"), ...args], {
+    const result = spawnSync(process.execPath, ["--require", guard, path.join(root, "src/cli.js"), ...args], {
       cwd: home, encoding: "utf8",
       env: { ...process.env, HOME: home, USERPROFILE: home, WINK_CLI_API_KEY: "", WINK_CLI_BASE_URL: "http://127.0.0.1:1" },
     });
@@ -38,7 +38,7 @@ try {
   assert.ok(plain.stdout.startsWith("---\nname: wink-cli-usage\n"));
   assert.ok(plain.stdout.includes(`version: ${pkg.version}\n`));
   assert.match(plain.stdout, /--list-styles/);
-  assert.match(plain.stdout, /wink-connector skill --reference http-api/);
+  assert.match(plain.stdout, /wink-cli skill --reference http-api/);
   const structured = run(["skill", "--json"]);
   assert.strictEqual(structured.status, 0, structured.stderr);
   assert.deepStrictEqual(JSON.parse(structured.stdout), {

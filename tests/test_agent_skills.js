@@ -17,10 +17,10 @@ function fixture(label) {
   const home = path.join(directory, "home");
   const packageRoot = path.join(directory, "global package with spaces and 'quotes'");
   fs.mkdirSync(home, { recursive: true });
-  fs.mkdirSync(path.join(packageRoot, "connector"), { recursive: true });
+  fs.mkdirSync(path.join(packageRoot, "src"), { recursive: true });
   fs.mkdirSync(path.join(packageRoot, "skills", skillName), { recursive: true });
   fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({ name: "wink-cli", version: pkg.version }));
-  fs.writeFileSync(path.join(packageRoot, "connector", "wink-connector.js"), "// Installed connector fixture\n");
+  fs.writeFileSync(path.join(packageRoot, "src", "cli.js"), "// Installed connector fixture\n");
   fs.writeFileSync(path.join(packageRoot, "skills", skillName, "SKILL.md"), "---\nname: wink-cli-usage\n---\nFULL CONTENT FROM INSTALLED CLI\n");
   return { home, packageRoot, env: {}, platform: "darwin", nodePath: process.execPath };
 }
@@ -133,7 +133,7 @@ try {
   const managedDir = skillDirectory(managed);
   const firstEntry = assertManaged(managedDir);
   assert.ok(firstEntry.includes(managed.nodePath));
-  assert.ok(firstEntry.includes("wink-connector.js"));
+  assert.ok(firstEntry.includes("cli.js"));
   const unchangedBefore = snapshot(managedDir);
   assert.strictEqual(installAgentSkills(managed)[0].status, "unchanged");
   assert.deepStrictEqual(snapshot(managedDir), unchangedBefore, "idempotent installation must preserve file contents");
@@ -186,14 +186,14 @@ try {
     return ["'" + value.replace(/'/g, "'\\''") + "'", "'" + value.replace(/'/g, "'\"'\"'") + "'"].some(quoted => text.includes(quoted));
   }
   assert.ok(containsPosixQuoted(posixEntry, posix.nodePath), "POSIX Node executable must be shell-quoted");
-  assert.ok(containsPosixQuoted(posixEntry, path.join(posix.packageRoot, "connector", "wink-connector.js")), "POSIX connector path must be shell-quoted");
+  assert.ok(containsPosixQuoted(posixEntry, path.join(posix.packageRoot, "src", "cli.js")), "POSIX connector path must be shell-quoted");
   const windows = fixture("windows-quoting");
   mkdir(windows.home, ".claude");
   windows.platform = "win32";
   windows.nodePath = "C:\\Program Files\\Node's tools\\node.exe";
   const windowsEntry = assertManaged(installAgentSkills(windows)[0].directory);
   assert.ok(windowsEntry.includes("& '" + windows.nodePath.replace(/'/g, "''") + "'"), "PowerShell must use a call operator and quote the executable");
-  assert.ok(windowsEntry.includes("'" + path.join(windows.packageRoot, "connector", "wink-connector.js").replace(/'/g, "''") + "'"));
+  assert.ok(windowsEntry.includes("'" + path.join(windows.packageRoot, "src", "cli.js").replace(/'/g, "''") + "'"));
 
   // WorkBuddy metadata retains user properties when the CLI upgrades its Skill.
   const workbuddy = fixture("workbuddy-metadata");
@@ -299,12 +299,12 @@ try {
   assert.deepStrictEqual(snapshot(path.dirname(rollbackTarget)), rollbackBefore, "failed replacement must restore the original and remove temporary staging files");
 
   // An unrelated, incomplete or mismatched installed package cannot own Agent files.
-  for (const mode of ["wrong-name", "wrong-version", "missing-connector", "missing-skill"]) {
+  for (const mode of ["wrong-name", "wrong-version", "missing-cli", "missing-skill"]) {
     const options = fixture(`invalid-package-${mode}`);
     mkdir(options.home, ".codex");
     if (mode === "wrong-name") fs.writeFileSync(path.join(options.packageRoot, "package.json"), JSON.stringify({ name: "another-package", version: pkg.version }));
     if (mode === "wrong-version") fs.writeFileSync(path.join(options.packageRoot, "package.json"), JSON.stringify({ name: "wink-cli", version: "0.0.0" }));
-    if (mode === "missing-connector") fs.unlinkSync(path.join(options.packageRoot, "connector", "wink-connector.js"));
+    if (mode === "missing-cli") fs.unlinkSync(path.join(options.packageRoot, "src", "cli.js"));
     if (mode === "missing-skill") fs.unlinkSync(path.join(options.packageRoot, "skills", skillName, "SKILL.md"));
     const before = snapshot(options.home);
     assert.throws(() => installAgentSkills(options), undefined, mode);

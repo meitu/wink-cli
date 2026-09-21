@@ -29,7 +29,7 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
         writeFileSync(...args) { writes.push(args); },
       };
       if (name === "path") return path;
-      if (name === "../src/wink_client") return {
+      if (name === "./wink_client") return {
         WinkClient: class {
           authUrl() { events.push("auth-url"); return { auth_url: url, once_code: code }; }
           async exchange(onceCode) {
@@ -41,13 +41,13 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
         responseOk: payload => payload.code === 0,
         dataObject: payload => payload.data,
       };
-      if (name === "../src/cli") return {
+      if (name === "./runtime_config") return {
         credentialFile: () => "/fixture/credentials/key",
         ENVIRONMENTS: { release: "https://cliapi-winkcut.meitu.com" }, DEFAULT_ENV: "release",
       };
-      if (name === "../src/connector_skill") return { cmdSkill() {} };
+      if (name === "./connector_skill") return { cmdSkill() {} };
       if (name === "../package.json") return { version: "1.13.1" };
-      if (name === "../src/open_browser") return {
+      if (name === "./open_browser") return {
         openBrowser(link) {
           events.push("open");
           assert.ok(stdout.includes(link), "print the fallback link before opening");
@@ -65,7 +65,7 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
       throw new Error(`Unexpected dependency: ${name}`);
     },
   };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../connector/wink-connector.js"), "utf8"), context);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/management_commands.js"), "utf8"), context);
   const result = await context.module.exports.cmdLogin(autoOpen ? ["--open-browser"] : []);
   assert.strictEqual(events.filter(event => event === "auth-url").length, 1);
   assert.ok(queries.every(value => value === code), "keep polling the same authorization code");

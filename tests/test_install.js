@@ -36,10 +36,10 @@ try {
         process.exit(1);
       }
       const installed = path.join(args[args.indexOf('--prefix') + 1], 'node_modules/wink-cli');
-      fs.mkdirSync(path.join(installed, 'connector'), {recursive: true});
+      fs.mkdirSync(path.join(installed, 'src'), {recursive: true});
       fs.mkdirSync(path.join(installed, 'skills/wink-cli-usage'), {recursive: true});
       fs.writeFileSync(path.join(installed, 'package.json'), JSON.stringify({name: 'wink-cli', version: ${JSON.stringify(require("../package.json").version)}}));
-      fs.writeFileSync(path.join(installed, 'connector/wink-connector.js'), '// fixture');
+      fs.writeFileSync(path.join(installed, 'src/cli.js'), '// fixture');
       fs.writeFileSync(path.join(installed, 'skills/wink-cli-usage/SKILL.md'), 'fixture');
     } else process.exit(8);
   `);
@@ -74,7 +74,7 @@ try {
   assert.ok(fs.existsSync(path.join(skillDirectory, "SKILL.md")), "install must register the Skill after npm succeeds");
   assert.match(installed.stdout, /Skill 已安装/);
   const beforeFailure = fs.readFileSync(path.join(skillDirectory, "SKILL.md"), "utf8");
-  assert.ok(beforeFailure.includes(path.join(prefix, "node_modules/wink-cli/connector/wink-connector.js")));
+  assert.ok(beforeFailure.includes(path.join(prefix, "node_modules/wink-cli/src/cli.js")));
   fs.unlinkSync(log);
   const failed = run(["install", "--prefix", prefix], { WINK_INSTALL_TEST_FAIL: "1" });
   assert.strictEqual(failed.status, 1);

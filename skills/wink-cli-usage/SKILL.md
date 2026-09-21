@@ -10,7 +10,7 @@ author: 美图
 
 # Wink CLI 使用说明
 
-本说明由当前安装的 wink-cli 随包提供，可供 WorkBuddy 的「Wink」连接器以及其他 Agent 调用。通过 `wink-connector skill` 读取时，Skill 版本自动取自 CLI 的 package.json，与 CLI 一起升级。每次新任务先读取当前文档；CLI 更新后重新读取，不沿用旧会话中的参数表。Windows 可使用 `wink-connector.cmd skill`。
+本说明由当前安装的 wink-cli 随包提供，可供 WorkBuddy 的「Wink」连接器以及其他 Agent 调用。通过 `wink-cli skill` 读取时，Skill 版本自动取自 CLI 的 package.json，与 CLI 一起升级。每次新任务先读取当前文档；CLI 更新后重新读取，不沿用旧会话中的参数表。Windows 可使用 `wink-cli.cmd skill`。
 
 CLI 可以独立安装并完成授权登录；WorkBuddy 也可通过连接器安装与认证。本文说明命令与档位选择、参数、结果判定和失败处理。CLI 帮助是实际支持参数的最终依据。
 
@@ -21,7 +21,7 @@ CLI 可以独立安装并完成授权登录；WorkBuddy 也可通过连接器安
 业务命令执行前，先确认运行时与登录态：
 
 ```bash
-wink-connector doctor --json
+wink-cli doctor --json
 ```
 
 返回字段含义：
@@ -35,16 +35,16 @@ wink-connector doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.13.1 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null github:meitu/wink-cli install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null github:meitu/wink-cli install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
-安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 和 `node "<全局包目录>/wink-cli/connector/wink-connector.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
+安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
 ## 二、认证前置条件
 
-自动打开授权页（CLI 1.13.1+）：直接运行 `wink-connector login --open-browser`，Windows 使用 `wink-connector.cmd login --open-browser`。此选项由命令自身打开系统浏览器，后台运行或输出被管道接收也不会跳过；WorkBuddy 连接器面板的 auth 仍由面板托管，不加此选项以免重复打开。启动时使用持续进程／会话句柄，约 1–2 秒即读取原始输出；短等待不能杀掉进程。禁止接 `| tail -5` 等等待 EOF 的管道或用同步命令替换提取链接；仅支持后台执行时，将输出写入本次独立日志并及时读取，保留确切进程标识。展示本次真实完整链接为“前往授权”备用超链接，命令已经尝试打开时不再另开页面；仅在明确打开失败或用户反馈未打开时，用同一链接补开一次。CLI 内置 300 秒轮询时限（网络请求可能延后实际退出），宿主总超时可留到 360 秒。不得猜测 once_code 只有 60 秒有效，也不能仅凭“尚未授权或已过期”的合并错误判定已过期；继续等待同一进程，只有实际超时、进程失败退出或用户要求重新登录时才重新发起。禁止用 `pkill -f` 批量终止登录进程。浏览器失败时保留链接与原进程让用户手动授权；打开成功不等于登录成功，外部终止也不等于服务端拒绝。
+自动打开授权页（CLI 1.14.0+）：直接运行 `wink-cli login --open-browser`，Windows 使用 `wink-cli.cmd login --open-browser`。此选项由命令自身打开系统浏览器，后台运行或输出被管道接收也不会跳过；WorkBuddy 连接器面板的 auth 仍由面板托管，不加此选项以免重复打开。启动时使用持续进程／会话句柄，约 1–2 秒即读取原始输出；短等待不能杀掉进程。禁止接 `| tail -5` 等等待 EOF 的管道或用同步命令替换提取链接；仅支持后台执行时，将输出写入本次独立日志并及时读取，保留确切进程标识。展示本次真实完整链接为“前往授权”备用超链接，命令已经尝试打开时不再另开页面；仅在明确打开失败或用户反馈未打开时，用同一链接补开一次。CLI 内置 300 秒轮询时限（网络请求可能延后实际退出），宿主总超时可留到 360 秒。不得猜测 once_code 只有 60 秒有效，也不能仅凭“尚未授权或已过期”的合并错误判定已过期；继续等待同一进程，只有实际超时、进程失败退出或用户要求重新登录时才重新发起。禁止用 `pkill -f` 批量终止登录进程。浏览器失败时保留链接与原进程让用户手动授权；打开成功不等于登录成功，外部终止也不等于服务端拒绝。
 
 - 凭据由连接器与 CLI 共同管理，落盘在 `~/.wink-mcp-server/cli-credentials/`，**不要读取、回显或转述其中内容**。
-- 未登录时执行 `wink-connector login --open-browser`（Windows 使用 `.cmd`；已解析绝对入口则沿用该入口）；连接器面板可用时也可由面板授权。将实际授权链接显示为“前往授权”超链接，保持同一进程等待成功或超时，不重复启动。`wink-connector status` 的 `WINK_AUTH=connected` 仅说明本地有凭据，退出码 0 不代表已登录。授权成功后沿用本轮素材与参数继续处理，无需重新上传。业务命令首次发现未登录也会自动进入授权等待。凭据明确失效时可使用 `--relogin` 完成一次重新授权；应用或环境权限问题按真实错误处理，不反复登录。
+- 未登录时执行 `wink-cli login --open-browser`（Windows 使用 `.cmd`；已解析绝对入口则沿用该入口）；连接器面板可用时也可由面板授权。将实际授权链接显示为“前往授权”超链接，保持同一进程等待成功或超时，不重复启动。`wink-cli status` 的 `WINK_AUTH=connected` 仅说明本地有凭据，退出码 0 不代表已登录。授权成功后沿用本轮素材与参数继续处理，无需重新上传。业务命令首次发现未登录也会自动进入授权等待。凭据明确失效时可使用 `--relogin` 完成一次重新授权；应用或环境权限问题按真实错误处理，不反复登录。
 - **禁止**向用户索要 api_key、once_code 或把凭据贴进对话。用户主动贴入时提醒其注意泄露风险。
 
 ## 三、命令与档位
@@ -76,7 +76,7 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 
 单档位功能可省略 `--level`，显式写 `--level 1` 也兼容。任何命令的准确档位表以 `wink-cli <命令> --help` 为准，不确定时先查帮助。
 
-视频全能修复调用 `wink-cli video_repair --input "/绝对路径/video.mp4" --json`。首次使用先检查 `wink-cli video_repair --help`；旧 CLI 不支持时需先发布并安装 1.11.0 或更高版本，不改用 `picture_quality --level 11/12`。动态 Skill 入口要求 CLI 1.13.0 或更高版本；新连接器上线前须先发布依赖的 CLI。
+视频全能修复调用 `wink-cli video_repair --input "/绝对路径/video.mp4" --json`。首次使用先检查 `wink-cli video_repair --help`；旧 CLI 不支持时需先发布并安装 1.11.0 或更高版本，不改用 `picture_quality --level 11/12`。统一命令入口要求 CLI 1.14.0 或更高版本；新连接器上线前须先发布依赖的 CLI。
 
 全能修复按 `task_type=2`、`func_id=65591`、视频 `content_type=2` 匹配云处理配置，使用返回的算法 type（2026-09-17 正式环境为 123）；默认开启抖动检测。每个视频只有一个任务，不自动串联其他功能；无强度、FPS、分辨率或工作流开关参数，整段视频超过 CLI 能力检查上限时说明限制，不静默裁剪。图片智能校色不在此视频流程内。
 
@@ -208,7 +208,7 @@ wink-cli picture_quality --help
 
 ## 十、排障参考
 
-命令报错但原因不明时，运行 `wink-connector skill --reference http-api`（Windows 可用 `wink-connector.cmd`），读取与当前 CLI 同版本的排障参考。源码位于 `references/http-api.md`。
+命令报错但原因不明时，运行 `wink-cli skill --reference http-api`（Windows 可用 `wink-cli.cmd`），读取与当前 CLI 同版本的排障参考。源码位于 `references/http-api.md`。
 
 参考说明授权、能力配置、风格列表、投递和轮询的实际协议边界；日常一律走 CLI，不凭旧接口示例绕过本地校验。
 

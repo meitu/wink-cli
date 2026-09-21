@@ -8,12 +8,12 @@ const SKILL_NAME = "wink-cli-usage";
 const SKILL_ROOT = path.resolve(__dirname, "../skills", SKILL_NAME);
 const REFERENCES = Object.freeze({ "http-api": "references/http-api.md" });
 
-const SKILL_HELP = `wink-connector skill — 读取当前已安装 CLI 随包发布的使用说明
+const SKILL_HELP = `wink-cli skill — 读取当前已安装 CLI 随包发布的使用说明
 
 用法:
-  wink-connector skill
-  wink-connector skill --reference http-api
-  wink-connector skill --json
+  wink-cli skill
+  wink-cli skill --reference http-api
+  wink-cli skill --json
 
 选项:
   --reference http-api   读取 HTTP 排障参考
