@@ -1,12 +1,13 @@
 {
-  "name": "wink-cli",
+  "name": "meitu-wink-cli",
   "version": "1.14.1",
   "description": "Wink CLI for cloud image and video processing: login, media validation, upload, submit, poll and return result URLs.",
   "type": "commonjs",
   "main": "src/cli.js",
   "bin": {
     "wink-cli": "src/cli.js",
-    "wink-connector": "connector/wink-connector.js"
+    "wink-connector": "connector/wink-connector.js",
+    "meitu-wink-cli": "src/cli.js"
   },
   "files": [
     "src",
@@ -37,5 +38,9 @@
   "license": "UNLICENSED",
   "dependencies": {
     "image-size": "2.0.2"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   }
 }

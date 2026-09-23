@@ -4,16 +4,16 @@
 
 ## 安装和运行
 
-上传到 GitHub 仓库 `meitu/wink-cli` 后，用户可以运行：
+将 `meitu-wink-cli@1.14.1` 发布到 npm 后，用户可以运行：
 
 ```sh
-npx github:meitu/wink-cli install
+npx --yes meitu-wink-cli@1.14.1 install
 wink-cli --help
 ```
 
-需要先安装 Node.js（建议使用受支持的 LTS 版本）、npm 和 Git，并能访问该仓库。私有仓库需要预先配置 Git 访问权限；安装时需要联网下载依赖。此命令将本次下载的版本打包后安装到 npm 全局目录，不依赖 npx 缓存长期保留，不触发登录或云处理。更新时重新运行同一安装命令；也可指定 Git tag，例如 `npx github:meitu/wink-cli#v1.10.0 install`（需先创建对应 tag）。
+需要先安装 Node.js（建议使用受支持的 LTS 版本）和 npm，并能访问 npm 源，不需要 Git。npm 包名为 `meitu-wink-cli`，命令仍为 `wink-cli`。此命令将指定版本安装到 npm 全局目录并同步 Agent Skill，不依赖 npx 缓存长期保留，不触发登录或云处理。升级时将安装命令中的版本号改为已验证的新版本。首次使用前须先将对应版本发布到 npm；Git 推送不等于 npm 发布。
 
-若全局目录没有写入权限，可使用 `npx github:meitu/wink-cli install --prefix <可写目录>`。macOS/Linux 将 `<可写目录>/bin` 加入 PATH，Windows 将 `<可写目录>` 加入用户 Path，再重新打开终端。安装后使用 `wink-cli`；旧的 `wink` 命令不再由本包注册。
+若全局目录没有写入权限，可使用 `npx --yes meitu-wink-cli@1.14.1 install --prefix <可写目录>`。macOS/Linux 将 `<可写目录>/bin` 加入 PATH，Windows 将 `<可写目录>` 加入用户 Path，再重新打开终端。安装后使用 `wink-cli`；旧的 `wink` 命令不再由本包注册。
 
 卸载使用 `npm uninstall -g wink-cli`；自定义安装前缀时追加相同的 `--prefix <目录>`。安装帮助：`wink-cli install --help`。
 
@@ -131,13 +131,13 @@ wink-cli skill --reference http-api  # 读取当前版本的排障参考
 
 连接器的完整使用说明统一维护在 [skills/wink-cli-usage/SKILL.md](skills/wink-cli-usage/SKILL.md)，参考文档放在同目录的 `references/`，一起进入 npm 安装包。`wink-cli skill` 读取当前安装位置的文档，输出版本自动取自 `package.json`，不依赖工作目录，也不登录、联网或修改 WorkBuddy 缓存。`--json` 返回 `name`、`cli_version`、`skill_version`、`reference` 和 `content`。
 
-WorkBuddy 使用本批统一命令配置时，要求 CLI ≥1.14.0。此后每次新任务先通过该入口读取 Skill；本机 CLI 安装升级后，下次读取即获得新文档。Git 推送本身不会更新用户已安装的 CLI，已有会话也不会自动替换读过的内容。可通过现有安装脚本或 `npx github:meitu/wink-cli install` 升级；连接器最低版本检查仍遵循自己的门槛，不表示每次重连都安装最新版。
+WorkBuddy 使用本批统一命令配置时，要求 CLI ≥1.14.0。此后每次新任务先通过该入口读取 Skill；本机 CLI 安装升级后，下次读取即获得新文档。Git 推送本身不会更新用户已安装的 CLI，已有会话也不会自动替换读过的内容。可通过现有安装脚本或 `npx --yes meitu-wink-cli@1.14.1 install` 升级；连接器最低版本检查仍遵循自己的门槛，不表示每次重连都安装最新版。
 
 发布时先发布 CLI，再发布首次迁移的连接器。此后仅更新此通用 Skill 的内容无需重新上传连接器；如果读取协议、最低 CLI 要求或连接器元数据改变，仍需发连接器新版本。各专家和独立业务 Skill 的上架包继续在 wink-agents 维护，不在这个随 CLI 更新的范围内。
 
 ### 安装到 Agent 技能目录
 
-`npx github:meitu/wink-cli install` 在 npm 安装成功后，自动检测本机已有的 Agent 配置目录，并安装 `wink-cli-usage` 入口：
+`npx --yes meitu-wink-cli@1.14.1 install` 在 npm 安装成功后，自动检测本机已有的 Agent 配置目录，并安装 `wink-cli-usage` 入口：
 
 | 检测到的配置目录 | Skill 安装位置 |
 |---|---|
@@ -149,11 +149,11 @@ WorkBuddy 使用本批统一命令配置时，要求 CLI ≥1.14.0。此后每�
 环境变量已设置时以其目录为准；未设置时检查表中的默认位置。仅创建已检测 Agent 的技能子目录，不创建未安装 Agent 的配置根目录。未检测到目标时仍完成 CLI 安装，并提示使用自定义目录。目录约定参考 [Codex](https://learn.chatgpt.com/docs/build-skills)、[Cursor](https://cursor.com/docs/skills)、[Claude Code](https://code.claude.com/docs/en/claude-directory)；WorkBuddy 与本项目现有本地导入器保持一致。同一实际目录会去重；部分 Agent 也扫描其他产品的目录，跨产品的列表展示由对应 Agent 决定。
 
 ```sh
-npx github:meitu/wink-cli install
+npx --yes meitu-wink-cli@1.14.1 install
 # 指定技能根目录，代替自动检测；会在该目录下创建 wink-cli-usage/
-npx github:meitu/wink-cli install --skill-dir "/absolute/agent/skills"
+npx --yes meitu-wink-cli@1.14.1 install --skill-dir "/absolute/agent/skills"
 # 只安装 CLI
-npx github:meitu/wink-cli install --skip-skills
+npx --yes meitu-wink-cli@1.14.1 install --skip-skills
 ```
 
 入口使用当前 Node.js 与 **npm 全局安装包**的绝对路径，不指向临时 npx 缓存，也不依赖 PATH 中同名的旧 CLI。它只读取说明；执行媒体处理前还需确认业务 CLI 版本一致。后续 CLI 升级后再次读取即可获取完整新版说明；重新执行 `install` 也会更新入口路径。安装完成后刷新 Agent 技能列表或新建会话。

@@ -171,7 +171,7 @@ function installAgentSkills({ packageRoot, home = os.homedir(), env = process.en
   nodePath = process.execPath, skillDir, expectedVersion = VERSION }) {
   if (!packageRoot || !path.isAbsolute(packageRoot)) throw new Error("CLI 安装包目录必须为绝对路径");
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"));
-  if (pkg.name !== "wink-cli" || pkg.version !== expectedVersion) throw new Error(`已安装 CLI 版本不匹配，要求 ${expectedVersion}`);
+  if (pkg.name !== require("../package.json").name || pkg.version !== expectedVersion) throw new Error(`已安装 CLI 版本不匹配，要求 ${expectedVersion}`);
   for (const file of ["src/cli.js", "skills/wink-cli-usage/SKILL.md"]) {
     if (!fs.statSync(path.join(packageRoot, file)).isFile()) throw new Error(`CLI 安装包缺少 ${file}`);
   }

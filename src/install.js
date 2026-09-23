@@ -9,7 +9,7 @@ const { installAgentSkills } = require("./agent_skills");
 const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Agent 安装使用 Skill
 
 用法:
-  npx github:meitu/wink-cli install
+  npx --yes meitu-wink-cli@1.14.1 install
   wink-cli install [--prefix <目录>] [--skill-dir <目录> | --skip-skills]
 
 选项:
@@ -18,8 +18,8 @@ const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Ag
   --skip-skills      只安装 CLI，不写入 Agent 技能目录
   -h, --help        显示本帮助
 
-安装后使用 wink-cli --help。需要 Node.js 和 npm；从 GitHub 安装还需要 Git
-及仓库访问权限。默认检测 Codex、Cursor、Claude Code、WorkBuddy 的已有配置目录。
+安装后使用 wink-cli --help。需要 Node.js 18+ 和 npm，并能访问 npm 源；不需要 Git。
+默认检测 Codex、Cursor、Claude Code、WorkBuddy 的已有配置目录。
 Skill 入口读取当前安装 CLI 的完整说明；保留用户修改过或非本安装器创建的同名 Skill。
 安装不会登录或投递云处理任务。`;
 
@@ -34,6 +34,43 @@ function npmCommand() {
   if (cli) return [process.execPath, [cli]];
   if (process.platform !== "win32") return ["npm", []];
   throw new Error("未找到 npm，请安装包含 npm 的 Node.js，或使用 npx 运行安装命令。");
+}
+
+// Keep legacy package contents intact; only move command entries owned by our
+// old GitHub package. npm otherwise rejects the renamed package with EEXIST.
+function moveLegacyCommands(globalRoot, binDir, backupDir) {
+  const moves = [];
+  for (const oldName of ["wink-cli", "wink-cli-v2"]) {
+    const root = path.join(globalRoot, oldName);
+    let pkg;
+    try { pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")); }
+    catch (_) { continue; }
+    if (pkg.name !== oldName || pkg.bin?.["wink-cli"] !== "src/cli.js" ||
+        !fs.existsSync(path.join(root, "skills/wink-cli-usage/SKILL.md"))) continue;
+    for (const [command, entry] of Object.entries(require("../package.json").bin)) {
+      if (pkg.bin?.[command] !== entry) continue;
+      for (const suffix of ["", ".cmd", ".ps1"]) {
+        const target = path.join(binDir, command + suffix);
+        let stat;
+        try { stat = fs.lstatSync(target); } catch (error) { if (error.code === "ENOENT") continue; throw error; }
+        const owned = stat.isSymbolicLink()
+          ? path.resolve(path.dirname(target), fs.readlinkSync(target)) === path.resolve(root, entry)
+          : stat.isFile() && stat.size < 32768 && fs.readFileSync(target, "utf8").replace(/\\/g, "/").includes(`node_modules/${oldName}/${entry}`);
+        if (owned) moves.push({ target, backup: path.join(backupDir, `${oldName}-${command}${suffix}`) });
+      }
+    }
+  }
+  const moved = [];
+  const restore = () => {
+    for (const { target, backup } of moved.reverse()) {
+      if (!fs.existsSync(backup) && !fs.lstatSync(backup, { throwIfNoEntry: false })) continue;
+      if (!fs.lstatSync(target, { throwIfNoEntry: false })) fs.renameSync(backup, target);
+    }
+  };
+  try {
+    for (const move of moves) { fs.renameSync(move.target, move.backup); moved.push(move); }
+  } catch (error) { restore(); throw error; }
+  return restore;
 }
 
 function installCli(flags = {}) {
@@ -75,14 +112,17 @@ function installCli(flags = {}) {
     if (!packed[0] || !packed[0].filename || path.basename(packed[0].filename) !== packed[0].filename) {
       throw new Error("npm pack 未返回有效的安装包文件名");
     }
-    npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
+    const globalRoot = npm(["root", "--global", ...prefixArgs]).trim();
+    const restoreLegacy = moveLegacyCommands(globalRoot, binDir, temp);
+    try {
+      npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
+    } catch (error) { restoreLegacy(); throw error; }
     process.stdout.write(`CLI 安装完成。命令目录: ${binDir}\n`);
     process.stdout.write("请在终端运行 wink-cli --help。若提示找不到命令，请将上述命令目录加入 PATH 后重新打开终端。\n");
     if (!flags["skip-skills"]) {
       try {
-        const globalRoot = npm(["root", "--global", ...prefixArgs]).trim();
         const results = installAgentSkills({
-          packageRoot: path.join(globalRoot, "wink-cli"), skillDir: flags["skill-dir"],
+          packageRoot: path.join(globalRoot, require("../package.json").name), skillDir: flags["skill-dir"],
         });
         const labels = { installed: "已安装", updated: "已更新", unchanged: "已是当前入口", skipped: "跳过", error: "失败" };
         for (const result of results) {
@@ -106,4 +146,4 @@ function installCli(flags = {}) {
   }
 }
 
-module.exports = { INSTALL_HELP, installCli };
+module.exports = { INSTALL_HELP, installCli, moveLegacyCommands };
