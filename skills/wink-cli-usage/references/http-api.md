@@ -8,8 +8,8 @@
 
 | 操作 | 请求 | 当前实现要点 |
 |---|---|---|
-| 授权页 | `GET /init/auth` | URL 同时携带 `once_code`、`client_id`；不要漏掉 Windows URL 中 `&` 后的参数 |
-| 换取凭据 | `GET /init/exchange` | 使用同一次授权的 `once_code` 与 `client_id`；凭据由 CLI 保存，不向用户索要或输出 |
+| 授权页 | `GET /init/auth` | release 使用 `https://wink.cn`，beta 使用 `https://beta.wink.cn`，pre 使用 `https://pre.wink.cn`；初始 URL 同时携带 `once_code`、`client_id`；不要漏掉 Windows URL 中 `&` 后的参数 |
+| 换取凭据 | `GET /init/exchange` | 保持对应环境的 `cliapi-winkcut.meitu.com` / `betacliapi-winkcut.meitu.com` / `precliapi-winkcut.meitu.com` API 域名，不使用授权页的 `wink.cn` 域名；携带同一次授权的 `once_code` 与 `client_id`；凭据由 CLI 保存，不向用户索要或输出 |
 | 云处理能力 | `GET /task/ai_type_config` | 公共客户端参数；以返回配置匹配功能、档位、媒体类型及约束 |
 | AI 美容风格 | `GET /material/ai_beauty/list` | 公共客户端参数、`count`、`cursor`，使用当前环境的 `api_key`；查询本身不投递任务 |
 | 投递 | `POST /task/submit` | `application/x-www-form-urlencoded` 请求体，由 CLI 构造公共参数及 `source_url`、`type`、`content_type`、`ext_params`、`right_detail` 等，不能用旧的单个 `resource_url` 示例代替 |
@@ -39,7 +39,7 @@
 - AI 美容先读取完整实时列表；`--style` 使用 `material_id`。`--gender` 仅用于本地按偏好和媒体适用范围随机选风格，不是直接传给服务端的性别参数。
 - 当前美容参数优先取 `material_conf.beauty_style` 非空对象，否则兼容旧 `material_conf.parameter`；两者都无效时停止上传。CLI 负责组装 JSON 字符串形式的 `retouch_ai_params`，用户不手写该协议。
 - 投递成功通常从 `data.msg_id` 取得任务 ID，兼容旧 `data.task_id`。成功投递不表示处理成功；查询进度100%也不单独作为成功依据。
-- 当前结果优先从 `data.result.media_info_list` 等算法产物字段提取，顶层 `data.url` 可能是原素材。以最终 CLI JSON 中 `results[].ok` 与 `result_url` 为交付依据，不直接选抓包中第一个 URL。
+- 当前结果逐项从 `data.result.media_info_list` 提取：优先使用 `raw_media_data`（无水印处理结果），为空或不是有效 HTTP/HTTPS 链接时回退 `media_data`。顶层 `data.url` 可能是原素材。以最终 CLI JSON 中 `results[].ok` 与 `result_url` 为交付依据，不直接选抓包中第一个 URL。
 - 查询失败或超时但已有任务 ID 时，不重新投递；提供任务标识与 [查看最近任务](https://wink.cn/editor/recent-task)。
 - 去水印未检测到水印、算法失败、缺少结果链接，都应报告失败；不得把原素材链接当作处理结果。
 - 媒体约束由实时配置与 CLI 校验决定，不凭“普通用户”字样推断账号会员档位，不自动切片或降档。

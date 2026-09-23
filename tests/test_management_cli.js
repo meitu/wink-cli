@@ -52,9 +52,10 @@ try {
   const recorded = fs.readFileSync(events, "utf8").trim().split("\n").map(JSON.parse);
   assert.deepStrictEqual(recorded.map(event => event.type), ["browser", "exchange"]);
   const url = new URL(recorded[0].url);
-  assert.strictEqual(url.origin, "https://betacliapi-winkcut.meitu.com");
+  assert.strictEqual(url.origin, "https://beta.wink.cn");
   assert.strictEqual(recorded[1].code, url.searchParams.get("once_code"));
   assert.ok(url.searchParams.has("client_id"));
+  assert.strictEqual(url.searchParams.has("op_type"), false);
   assert.match(run(["--env", "beta", "status"]).stdout, /WINK_AUTH=connected/);
   assert.match(run(["status"]).stdout, /WINK_AUTH=disconnected/, "credentials stay environment-scoped");
   const oldStatus = run(["status", "--base-url=https://betacliapi-winkcut.meitu.com"], true);

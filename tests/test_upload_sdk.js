@@ -273,6 +273,21 @@ async function testQueryProtocol() {
   );
 
   // 算法结果必须优先于可能指向原素材的顶层 url。
+  for (const extension of ["jpg", "mp4"]) {
+    const rawUrl = `https://cdn/enhanced-raw.${extension}`;
+    const mediaUrl = `https://cdn/enhanced-watermarked.${extension}`;
+    const payload = (raw) => ({ data: {
+      url: `https://cdn/original.${extension}`,
+      result: { media_info_list: [{ raw_media_data: raw, media_data: mediaUrl }] },
+    } });
+    assert.strictEqual(resultUrl(payload(rawUrl)), rawUrl);
+    for (const empty of [undefined, null, "", " ", "invalid", "file:///tmp/result"]) {
+      assert.strictEqual(resultUrl(payload(empty)), mediaUrl);
+    }
+    assert.strictEqual(resultUrl({ data: {
+      result: { media_info_list: [{ raw_media_data: rawUrl }] },
+    } }), rawUrl);
+  }
   assert.strictEqual(resultUrl({ data: {
     url: "https://cdn/original.jpg",
     result_url: "https://cdn/legacy.jpg",

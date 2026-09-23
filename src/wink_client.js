@@ -7,6 +7,7 @@ const https = require("https");
 const os = require("os");
 const path = require("path");
 const { UploadClient, UploadError, request } = require("./upload_sdk");
+const { authPageBaseUrl } = require("./runtime_config");
 
 const DEFAULT_BASE_URL = "https://precliapi-winkcut.meitu.com";
 const MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024; // 1 GiB
@@ -125,6 +126,8 @@ function resultUrl(payload) {
     if (Array.isArray(result.media_info_list)) {
       for (const item of result.media_info_list) {
         if (!item || typeof item !== "object") continue;
+        // raw_media_data 是无水印的处理结果；缺失或无有效链接时回退普通结果。
+        push(item.raw_media_data);
         push(item.media_data);
         push(item.url);
       }
@@ -139,7 +142,7 @@ function resultUrl(payload) {
       if (url.protocol === "http:" || url.protocol === "https:") return candidate;
     } catch (_) {}
   }
-  throw new WinkError("finished Wink response has no valid result media URL (data.url / data.result_url / data.result.media_info_list[].media_data)");
+  throw new WinkError("finished Wink response has no valid result media URL (data.url / data.result_url / data.result.media_info_list[].raw_media_data / data.result.media_info_list[].media_data)");
 }
 
 /**
@@ -189,7 +192,7 @@ class WinkClient {
    */
   authUrl(onceCode, clientId) {
     const code = (onceCode && /^[a-z0-9]{16,32}$/.test(onceCode)) ? onceCode : generateOnceCode();
-    const url = new URL(`${this.baseUrl}/init/auth`);
+    const url = new URL(`${authPageBaseUrl(this.baseUrl)}/init/auth`);
     url.searchParams.set("once_code", code);
     url.searchParams.set("client_id", resolveClientId(clientId));
     return { ok: true, auth_url: url.toString(), once_code: code };

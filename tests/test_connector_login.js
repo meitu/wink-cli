@@ -11,7 +11,7 @@ const { openBrowser } = require("../src/open_browser");
 // writing credentials, or waiting five minutes.
 async function login({ platform = "darwin", autoOpen = true, failOpen = false, timeout = false } = {}) {
   const code = "abcdefghijklmnopqrstuvwx01234567";
-  const url = `https://cliapi-winkcut.meitu.com/init/auth?once_code=${code}&client_id=1189857724`;
+  const url = `https://wink.cn/init/auth?once_code=${code}&client_id=1189857724`;
   const events = [], writes = [], queries = [], launches = [];
   let now = 0, stdout = "", stderr = "";
   const context = {

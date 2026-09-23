@@ -31,6 +31,16 @@ async function capture(fn) {
       beta: "https://betacliapi-winkcut.meitu.com",
       release: "https://cliapi-winkcut.meitu.com",
     };
+    const authOrigins = { pre: "https://pre.wink.cn", beta: "https://beta.wink.cn", release: "https://wink.cn" };
+    for (const [env, base] of Object.entries(endpoints)) {
+      const url = new URL(new WinkClient({ baseUrl: base + "/" }).authUrl("abcdefghijklmnopqrstuvwx01234567", "1189857724").auth_url);
+      assert.strictEqual(url.origin, authOrigins[env]);
+      assert.strictEqual(url.pathname, "/init/auth");
+      assert.strictEqual(url.searchParams.get("once_code"), "abcdefghijklmnopqrstuvwx01234567");
+      assert.strictEqual(url.searchParams.get("client_id"), "1189857724");
+      assert.strictEqual(url.searchParams.has("op_type"), false);
+    }
+    assert.strictEqual(new URL(new WinkClient({ baseUrl: "http://localhost:1234" }).authUrl().auth_url).origin, "http://localhost:1234");
     assert.deepStrictEqual(resolveEnvironment({}), { env: "release", baseUrl: endpoints.release, isTest: false },
       "legacy base-url environment variable must not change the release default");
     assert.strictEqual(new Set(Object.values(endpoints).map(credentialFile)).size, 3, "credentials are isolated");
@@ -38,13 +48,15 @@ async function capture(fn) {
     for (const requested of [undefined, "pre", "beta", "release"]) {
       const env = requested || "release", base = endpoints[env];
       const requests = [], uploadFlags = []; let authUrl, cachedAt, writtenAt;
-      WinkClient.prototype.request = async function (method, endpoint, params) {
+      WinkClient.prototype.request = async function (method, endpoint, params, options = {}) {
         assert.strictEqual(this.baseUrl, base, endpoint);
         requests.push(endpoint);
         if (endpoint === "/init/exchange") {
+          assert.strictEqual(options.baseUrl, undefined, "exchange must use the original API host");
           assert.strictEqual(params.once_code, new URL(authUrl).searchParams.get("once_code"));
           return { code: 0, data: { api_key: "env-test-key" } };
         }
+        assert.strictEqual(options.baseUrl, undefined, "cloud APIs must not switch to the authorization host");
         assert.strictEqual(this.apiKey, "env-test-key");
         if (endpoint === "/task/ai_type_config") return { code: 0, data: [
           { type: 11, name: "视频超清", content_type: 2, min_time: 1, max_time_normal: 60 },
@@ -69,7 +81,7 @@ async function capture(fn) {
         },
       }));
       assert.strictEqual(run.code, 3, run.err); // expected mock algorithm failure, no download
-      assert.strictEqual(new URL(authUrl).origin, base);
+      assert.strictEqual(new URL(authUrl).origin, authOrigins[env]);
       assert.strictEqual(cachedAt, base); assert.strictEqual(writtenAt, base);
       assert.deepStrictEqual(uploadFlags, [env === "pre"], "real upload SDK receives the environment flag");
       assert.deepStrictEqual(requests, ["/init/exchange", "/task/ai_type_config", "/task/submit", "/task/query"]);
