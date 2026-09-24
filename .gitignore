@@ -19,3 +19,6 @@ coverage/
 .idea/
 *.swp
 Thumbs.db
+
+# Generated npm distribution archives
+dist/

@@ -9,11 +9,21 @@ const { WinkClient } = require("../src/wink_client");
 
 async function capture(fn) {
   const stdout = process.stdout.write, stderr = process.stderr.write;
+  const stderrTTY = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
   let out = "", err = "";
   process.stdout.write = (s) => { out += s; return true; };
   process.stderr.write = (s) => { err += s; return true; };
-  try { return { code: await fn(), out, err }; }
-  finally { process.stdout.write = stdout; process.stderr.write = stderr; }
+  try {
+    // Captured progress represents redirected output, even when npm publish
+    // runs inside a terminal. Terminal refresh behavior has its own tests.
+    Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
+    return { code: await fn(), out, err };
+  } finally {
+    process.stdout.write = stdout;
+    process.stderr.write = stderr;
+    if (stderrTTY) Object.defineProperty(process.stderr, "isTTY", stderrTTY);
+    else delete process.stderr.isTTY;
+  }
 }
 
 (async () => {

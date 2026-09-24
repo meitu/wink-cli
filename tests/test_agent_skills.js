@@ -19,7 +19,7 @@ function fixture(label) {
   fs.mkdirSync(home, { recursive: true });
   fs.mkdirSync(path.join(packageRoot, "src"), { recursive: true });
   fs.mkdirSync(path.join(packageRoot, "skills", skillName), { recursive: true });
-  fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: pkg.version }));
+  fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({ name: pkg.name, version: pkg.version }));
   fs.writeFileSync(path.join(packageRoot, "src", "cli.js"), "// Installed connector fixture\n");
   fs.writeFileSync(path.join(packageRoot, "skills", skillName, "SKILL.md"), "---\nname: wink-cli-usage\n---\nFULL CONTENT FROM INSTALLED CLI\n");
   return { home, packageRoot, env: {}, platform: "darwin", nodePath: process.execPath };
@@ -138,7 +138,7 @@ try {
   assert.strictEqual(installAgentSkills(managed)[0].status, "unchanged");
   assert.deepStrictEqual(snapshot(managedDir), unchangedBefore, "idempotent installation must preserve file contents");
   const nextVersion = "99.1.0";
-  fs.writeFileSync(path.join(managed.packageRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: nextVersion }));
+  fs.writeFileSync(path.join(managed.packageRoot, "package.json"), JSON.stringify({ name: pkg.name, version: nextVersion }));
   fs.appendFileSync(path.join(managed.packageRoot, "skills", skillName, "SKILL.md"), "NEW CLI INSTRUCTIONS\n");
   const upgraded = installAgentSkills({ ...managed, expectedVersion: nextVersion });
   assert.strictEqual(upgraded[0].status, "updated");
@@ -208,7 +208,7 @@ try {
   assert.ok(userMeta.installedAt);
   userMeta.customProperty = { keep: true };
   fs.writeFileSync(userMetaFile, JSON.stringify(userMeta));
-  fs.writeFileSync(path.join(workbuddy.packageRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: nextVersion }));
+  fs.writeFileSync(path.join(workbuddy.packageRoot, "package.json"), JSON.stringify({ name: pkg.name, version: nextVersion }));
   assert.strictEqual(installAgentSkills({ ...workbuddy, expectedVersion: nextVersion })[0].status, "updated");
   const updatedMeta = JSON.parse(fs.readFileSync(userMetaFile, "utf8"));
   assert.deepStrictEqual(updatedMeta.customProperty, { keep: true });
@@ -278,7 +278,7 @@ try {
   installAgentSkills(rollback);
   const rollbackTarget = skillDirectory(rollback);
   const rollbackBefore = snapshot(path.dirname(rollbackTarget));
-  fs.writeFileSync(path.join(rollback.packageRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: nextVersion }));
+  fs.writeFileSync(path.join(rollback.packageRoot, "package.json"), JSON.stringify({ name: pkg.name, version: nextVersion }));
   const renameSync = fs.renameSync;
   let failedReplacement = false;
   try {
@@ -303,7 +303,7 @@ try {
     const options = fixture(`invalid-package-${mode}`);
     mkdir(options.home, ".codex");
     if (mode === "wrong-name") fs.writeFileSync(path.join(options.packageRoot, "package.json"), JSON.stringify({ name: "another-package", version: pkg.version }));
-    if (mode === "wrong-version") fs.writeFileSync(path.join(options.packageRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: "0.0.0" }));
+    if (mode === "wrong-version") fs.writeFileSync(path.join(options.packageRoot, "package.json"), JSON.stringify({ name: pkg.name, version: "0.0.0" }));
     if (mode === "missing-cli") fs.unlinkSync(path.join(options.packageRoot, "src", "cli.js"));
     if (mode === "missing-skill") fs.unlinkSync(path.join(options.packageRoot, "skills", skillName, "SKILL.md"));
     const before = snapshot(options.home);

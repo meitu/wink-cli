@@ -4,7 +4,7 @@
 
 ## 安装和运行
 
-将 `meitu-wink-cli@1.14.1` 发布到 npm 后，用户可以运行：
+当前 npm 安装入口（已发布的 1.14.1）：
 
 ```sh
 npx --yes meitu-wink-cli@1.14.1 install
@@ -15,9 +15,33 @@ wink-cli --help
 
 若全局目录没有写入权限，可使用 `npx --yes meitu-wink-cli@1.14.1 install --prefix <可写目录>`。macOS/Linux 将 `<可写目录>/bin` 加入 PATH，Windows 将 `<可写目录>` 加入用户 Path，再重新打开终端。安装后使用 `wink-cli`；旧的 `wink` 命令不再由本包注册。
 
-卸载使用 `npm uninstall -g wink-cli`；自定义安装前缀时追加相同的 `--prefix <目录>`。安装帮助：`wink-cli install --help`。
+npm 安装的发行包卸载使用 `npm uninstall -g meitu-wink-cli`；GitHub 安装的兼容包使用 `npm uninstall -g wink-cli`；自定义安装前缀时追加相同的 `--prefix <目录>`。安装帮助：`wink-cli install --help`。
 
 如果此前安装过旧包 `wink-cli-v2`，请先运行 `npm uninstall -g wink-cli-v2`，再执行上面的安装命令，避免旧包占用同名命令。使用自定义 `--prefix` 时，卸载也需要指定相同前缀。
+
+### GitHub 旧安装器兼容与 npm 发布
+
+从 1.14.2 起，两种发行方式共用同一份业务代码，但保留各自的安装契约：
+
+| 来源 | 包名 | 全局包目录 |
+|---|---|---|
+| GitHub 仓库／旧专家克隆安装 | `wink-cli`（private） | `node_modules/wink-cli` |
+| npm 公开发行包 | `meitu-wink-cli` | `node_modules/meitu-wink-cli` |
+
+已上架的旧专家安装脚本会校验根包名和安装目录为 `wink-cli`，因此不要再次修改 Git 根包名。修复推送到 GitHub 默认分支后，原来的旧脚本重新克隆即可使用，不要求先更新专家或 Skill。此兼容修复解决包名／目录失败；运行环境仍需要 Git、Node/npm 和到 GitHub、npm 的网络访问。不会自动替换用户已经安装的 CLI，也不会修复 GitHub 无法访问的网络环境。
+
+npm 上的 `wink-cli` 属于其他发布者，本仓库以 `private: true` 和发布检查阻止误发。发布时先测试并生成独立发行包：
+
+```sh
+npm run pack:npm
+npm publish ./dist/meitu-wink-cli-1.14.2.tgz --access public --registry=https://registry.npmjs.org/
+```
+
+`pack:npm` 不发布、不登录，也不修改仓库根 `package.json`；临时打包目录中才将包名设为 `meitu-wink-cli`，去除 private 和仓库开发脚本，保留相同版本、功能代码、依赖、命令入口和 Skill。不要在根目录直接执行 `npm publish`。1.14.2 的 npm 安装命令须等此版本实际发布后再推广，现有 WorkBuddy 固定的 npm 1.14.1 仍可使用。
+
+两种安装器之间切换时，仅迁移由 Wink 自身包管理的命令入口，保留已有包文件和登录凭据；安装失败时恢复旧入口。npm 源与 Git 默认分支是独立发布渠道：本次恢复旧专家安装只需将 Git 修复推送到旧脚本克隆的默认分支；发布 npm 本身不会修复 Git 根包名。
+
+可运行 `npm run test:legacy-install` 做联网隔离安装测试：直接使用未修改的历史安装脚本，通过 Git URL 映射克隆当前源码的临时仓库，验证真实依赖安装、旧目录、Git/npm 双向切换与命令入口，不读取真实登录、不执行云任务。历史脚本来自 wink-agents 的 `65b6b40:workbuddy/scripts/install_cli_from_git.cjs`，保存在 `tests/fixtures/legacy_workbuddy_install.cjs`，不得将其改成新版脚本来让测试通过。
 
 ### 从源码运行
 

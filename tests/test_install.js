@@ -35,10 +35,10 @@ try {
         console.error('EACCES fixture');
         process.exit(1);
       }
-      const installed = path.join(args[args.indexOf('--prefix') + 1], 'node_modules/meitu-wink-cli');
+      const installed = path.join(args[args.indexOf('--prefix') + 1], 'node_modules/wink-cli');
       fs.mkdirSync(path.join(installed, 'src'), {recursive: true});
       fs.mkdirSync(path.join(installed, 'skills/wink-cli-usage'), {recursive: true});
-      fs.writeFileSync(path.join(installed, 'package.json'), JSON.stringify({name: 'meitu-wink-cli', version: ${JSON.stringify(require("../package.json").version)}}));
+      fs.writeFileSync(path.join(installed, 'package.json'), JSON.stringify({name: 'wink-cli', version: ${JSON.stringify(require("../package.json").version)}}));
       fs.writeFileSync(path.join(installed, 'src/cli.js'), '// fixture');
       fs.writeFileSync(path.join(installed, 'skills/wink-cli-usage/SKILL.md'), 'fixture');
     } else process.exit(8);
@@ -53,7 +53,7 @@ try {
   }
   const help = run(["install", "--help"]);
   assert.strictEqual(help.status, 0, help.stderr);
-  assert.match(help.stdout, /npx --yes meitu-wink-cli@1\.14\.1 install/);
+  assert.match(help.stdout, /npx --yes meitu-wink-cli@1\.14\.2 install/);
   assert.ok(!fs.existsSync(log), "help must not install or log in");
   for (const args of [["--prefix"], ["--prefix="], ["--force"], ["extra"], ["--skill-dir"], ["--skill-dir="],
     ["--skip-skills=false"], ["--skip-skills", "--skill-dir", temp]]) {
@@ -74,7 +74,7 @@ try {
   assert.ok(fs.existsSync(path.join(skillDirectory, "SKILL.md")), "install must register the Skill after npm succeeds");
   assert.match(installed.stdout, /Skill 已安装/);
   const beforeFailure = fs.readFileSync(path.join(skillDirectory, "SKILL.md"), "utf8");
-  assert.ok(beforeFailure.includes(path.join(prefix, "node_modules/meitu-wink-cli/src/cli.js")));
+  assert.ok(beforeFailure.includes(path.join(prefix, "node_modules/wink-cli/src/cli.js")));
   fs.unlinkSync(log);
   const failed = run(["install", "--prefix", prefix], { WINK_INSTALL_TEST_FAIL: "1" });
   assert.strictEqual(failed.status, 1);
@@ -96,7 +96,8 @@ try {
   assert.ok(fs.existsSync(path.join(custom, "wink-cli-usage/SKILL.md")));
   assert.ok(!fs.existsSync(skillDirectory), "custom directory overrides auto detection");
   const pkg = require("../package.json");
-  assert.strictEqual(pkg.name, "meitu-wink-cli");
+  assert.strictEqual(pkg.name, "wink-cli");
+  assert.strictEqual(pkg.private, true, "Git compatibility package must not publish as the unrelated npm wink-cli");
   assert.ok(!Object.hasOwn(pkg.bin, "wink-cli-v2"));
   assert.strictEqual(pkg.bin[pkg.name], pkg.bin["wink-cli"], "npx must select the main CLI unambiguously");
   assert.ok(!Object.hasOwn(pkg.bin, "wink"), "old command must not be installed");
@@ -117,7 +118,7 @@ try {
   fs.writeFileSync(shim, 'node "%dp0%/node_modules/wink-cli/src/cli.js"');
   const foreign = path.join(oldBin, "wink-connector");
   fs.writeFileSync(foreign, "unrelated command");
-  const restore = moveLegacyCommands(path.dirname(oldRoot), oldBin, backup);
+  const restore = moveLegacyCommands(path.dirname(oldRoot), oldBin, backup, "meitu-wink-cli");
   assert(!fs.existsSync(oldLink)); assert(!fs.existsSync(shim));
   assert.strictEqual(fs.readFileSync(foreign, "utf8"), "unrelated command");
   assert(fs.existsSync(path.join(oldRoot, "src/cli.js")), "keep old package and credentials intact");

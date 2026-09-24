@@ -9,7 +9,7 @@ const { installAgentSkills } = require("./agent_skills");
 const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Agent 安装使用 Skill
 
 用法:
-  npx --yes meitu-wink-cli@1.14.1 install
+  npx --yes meitu-wink-cli@${require("../package.json").version} install
   wink-cli install [--prefix <目录>] [--skill-dir <目录> | --skip-skills]
 
 选项:
@@ -36,11 +36,12 @@ function npmCommand() {
   throw new Error("未找到 npm，请安装包含 npm 的 Node.js，或使用 npx 运行安装命令。");
 }
 
-// Keep legacy package contents intact; only move command entries owned by our
-// old GitHub package. npm otherwise rejects the renamed package with EEXIST.
-function moveLegacyCommands(globalRoot, binDir, backupDir) {
+// Keep package contents intact; move command entries owned by a different
+// Wink distribution only (GitHub wink-cli or npm meitu-wink-cli). npm otherwise rejects the renamed package with EEXIST.
+function moveLegacyCommands(globalRoot, binDir, backupDir, packageName = require("../package.json").name) {
   const moves = [];
-  for (const oldName of ["wink-cli", "wink-cli-v2"]) {
+  for (const oldName of ["wink-cli", "wink-cli-v2", "meitu-wink-cli"]) {
+    if (oldName === packageName) continue;
     const root = path.join(globalRoot, oldName);
     let pkg;
     try { pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")); }
