@@ -62,7 +62,7 @@ try {
   assert.match(oldStatus.stdout, /WINK_AUTH=connected/, "legacy entry shares the same credentials");
   const doctor = JSON.parse(run(["doctor", "--env=beta", "--json"]).stdout);
   assert.strictEqual(doctor.logged_in, true);
-  assert.strictEqual(doctor.skill_command, "wink-cli skill");
+  assert.strictEqual(doctor.skill_command, process.platform === "win32" ? "wink-cli.cmd skill" : "wink-cli skill");
   const helpLogout = run(["logout", "--env=beta", "--help"]);
   assert.strictEqual(helpLogout.status, 0);
   assert.match(run(["status", "--env=beta"]).stdout, /WINK_AUTH=connected/);
