@@ -39,7 +39,7 @@ const VERSION = require("../package.json").version;
 const { ENVIRONMENTS, DEFAULT_ENV, CREDENTIAL_DIR, credentialFile } = require("./runtime_config");
 const DEFAULT_LEVEL = 2; // 与参考实现一致：2 = 超清（默认）
 const LOGIN_TIMEOUT_SECONDS = 300;
-const POLL_INTERVAL_SECONDS = 3;
+const POLL_INTERVAL_SECONDS = 1;
 const POLL_TIMEOUT_SECONDS = 600;
 
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
@@ -142,6 +142,9 @@ function toolHelp(command) {
     "  --base-url <url>             自定义联调地址；上传使用正式通道",
     "  --relogin                    忽略本地缓存，重新走 SSO 授权登录",
     "  --json                       以 JSON 输出结果汇总（进度信息走 stderr）",
+    "  --progress-json              stderr 输出逐行 JSON 进度事件（其他诊断仍为文本）",
+    "  --channel-id <id>            投递渠道 client_channel_id；默认按 Agent 环境推断（workbuddy/cursor/claude/codex/cli）",
+    "  --client-model <name>        机型 client_model；默认自动采集（如 Apple M4 / Windows CPU / 安卓机型名）",
     "  -h, --help                   显示本帮助",
     "",
     "默认值:",
@@ -539,6 +542,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
 
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
+    const fileProgress = createFileProgress(file, process.stderr, { json: optionFlag(flags, "progress-json") });
     const contentType = contentTypeOfFile(file);
     let info;
     let media;
@@ -557,6 +561,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     } catch (error) {
       failed += 1;
       progress(`${file} 跳过：${error.message}`);
+      if (optionFlag(flags, "progress-json")) fileProgress.fail(error.message);
       results.push({ file, ok: false, reason: error.message });
       continue;
     }
@@ -573,13 +578,13 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
       if (!check.ok) {
         failed += 1;
         progress(`${file} 不支持：${check.reason}`);
+        if (optionFlag(flags, "progress-json")) fileProgress.fail(check.reason);
         results.push({ file, ok: false, reason: check.reason });
         continue;
       }
       if (tool.configMatch) info.taskType = String(selectedConfig.type);
     }
 
-    const fileProgress = createFileProgress(file);
     let taskId;
     try {
       const started = Date.now();
@@ -598,12 +603,16 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         now: services.recharge?.now,
         sleep: services.recharge?.sleep,
       });
+      const channelId = optionValue(flags, "channel-id");
+      const clientModel = optionValue(flags, "client-model");
       const finalPayload = await authed.run(uploaded.resource_url, {
         ...media,
         // ffprobe 和本地时长校验用秒；/task/submit 的 duration 用整数毫秒。
         ...(contentType === "2" && media.duration != null ? { duration: Math.round(media.duration * 1000) } : {}),
         contentType,
         taskType: info.taskType,
+        ...(channelId ? { channelId } : {}),
+        ...(clientModel ? { clientModel } : {}),
         ...prepared.submit,
         typeParams: JSON.stringify({ ...prepared.params, ...beautySubmission?.params,
           ...(command === "cartoon" && contentType === "1" ? { preview: 1 } : {}),
@@ -618,8 +627,9 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
           fileProgress.processing();
           return true;
         },
-        onProgress: ({ phase, remainingMs, taskId: currentTaskId }) => {
+        onProgress: ({ phase, remainingMs, elapsedMs, taskId: currentTaskId }) => {
           taskId = currentTaskId || taskId;
+          fileProgress.task({ taskId: currentTaskId, elapsedMs });
           if (phase === "running") fileProgress.processing(remainingMs);
         },
       });
@@ -634,7 +644,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
       }
       const remote = resultUrl(finalPayload);
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
-      fileProgress.finish(`${seconds}秒 → ${remote}`);
+      fileProgress.finish(`${seconds}秒 → ${remote}`, remote);
       succeeded += 1;
       results.push({
         file,
@@ -716,7 +726,7 @@ async function main(argv, services = {}) {
       return 0;
     }
     if (_.length > 1) throw new Error("install 不接受额外位置参数；可使用 --prefix <目录>");
-    return installCli(flags);
+    return await installCli(flags);
   }
   if (Object.hasOwn(COMMANDS, command)) {
     if (wantsHelp) {

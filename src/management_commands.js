@@ -131,6 +131,7 @@ function cmdLogout(argv) {
 function cmdDoctor(argv) {
   const baseUrl = resolveBaseUrl(argv);
   const apiKey = readCredential(baseUrl);
+  const { detectAgentChannelId, detectClientModel } = require("./wink_client");
   const report = {
     ok: nodeVersionOk(),
     node: process.version,
@@ -143,6 +144,8 @@ function cmdDoctor(argv) {
     credential_file: credentialFile(baseUrl),
     result_mode: "url",
     platform: process.platform,
+    client_channel_id: detectAgentChannelId(),
+    client_model: detectClientModel({ useCache: false }),
   };
   if (argv.includes("--json")) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
@@ -152,6 +155,8 @@ function cmdDoctor(argv) {
       `Wink CLI: ${report.cli_version}`,
       `服务地址: ${report.base_url}`,
       `登录状态: ${report.logged_in ? "已连接" : "未连接"}`,
+      `投递渠道: ${report.client_channel_id}`,
+      `机型: ${report.client_model}`,
       "处理结果: 仅返回下载链接",
     ].join("\n") + "\n");
   }

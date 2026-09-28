@@ -16,7 +16,7 @@
 | 查询 | `GET /task/query` | 公共客户端参数加 `msg_id`；使用与投递一致的账号、应用和环境 |
 | 美豆余额 | `GET /subscribe/remain_amount_info` | 美豆不足时先记录 `total_amount` 再打开购买页，每5秒查询，最多300秒；余额增加后重试投递 |
 
-客户端公共参数由当前实现生成，包含 `client_id`、`version`、`gnum` 等。`api_key` 与可选的 `Access-Token` 不是同一个凭据，不自行互换。正常业务始终通过 CLI，不将 CLI 凭据发给网站、Mock 或素材下载域名。
+客户端公共参数由当前实现生成，包含 `client_id`、`version`、`gnum`、`client_channel_id` 等。`client_channel_id` 默认按调用 Agent 推断（WorkBuddy → `workbuddy`，其余为 `cursor` / `claude` / `codex` / `cli`），可用 `--channel-id` 或 `WINK_TASK_CHANNEL_ID` 覆盖；不再固定为 `mcp`。`client_model` 仅在 `POST /task/submit` 投递时携带（默认自动采集本机机型，如 macOS `Apple M4`），列表/查询等其他接口不传；可用 `--client-model` 或 `WINK_TASK_CLIENT_MODEL` 覆盖。`api_key` 与可选的 `Access-Token` 不是同一个凭据，不自行互换。正常业务始终通过 CLI，不将 CLI 凭据发给网站、Mock 或素材下载域名。
 
 ## 环境与授权
 

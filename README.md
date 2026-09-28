@@ -30,14 +30,20 @@ npm 安装的发行包卸载使用 `npm uninstall -g meitu-wink-cli`；GitHub �
 
 已上架的旧专家安装脚本会校验根包名和安装目录为 `wink-cli`，因此不要再次修改 Git 根包名。修复推送到 GitHub 默认分支后，原来的旧脚本重新克隆即可使用，不要求先更新专家或 Skill。此兼容修复解决包名／目录失败；运行环境仍需要 Git、Node/npm 和到 GitHub、npm 的网络访问。不会自动替换用户已经安装的 CLI，也不会修复 GitHub 无法访问的网络环境。
 
-npm 上的 `wink-cli` 属于其他发布者，本仓库以 `private: true` 和发布检查阻止误发。发布时先测试并生成独立发行包：
+npm 上的 `wink-cli` 属于其他发布者，本仓库以 `private: true` 和发布检查阻止误发。发布公开包时**不要**改仓库根 `package.json` 的包名；在临时目录中改名为 `meitu-wink-cli` 再打包发布：
 
 ```sh
-npm run pack:npm
-npm publish ./dist/meitu-wink-cli-1.14.2.tgz --access public --registry=https://registry.npmjs.org/
+# 推荐：测试 → 临时改名打包 → 发布（根 package.json 始终保持 wink-cli）
+npm run publish:npm
+
+# 仅演练，不上传
+npm run publish:npm -- --dry-run
+
+# 已有 dist 包时跳过测试与打包
+npm run publish:npm -- --skip-tests --skip-pack --yes
 ```
 
-`pack:npm` 不发布、不登录，也不修改仓库根 `package.json`；临时打包目录中才将包名设为 `meitu-wink-cli`，去除 private 和仓库开发脚本，保留相同版本、功能代码、依赖、命令入口和 Skill。不要在根目录直接执行 `npm publish`。1.14.2 的 npm 安装命令须等此版本实际发布后再推广，现有 WorkBuddy 固定的 npm 1.14.1 仍可使用。
+也可分步：`npm run pack:npm` 后执行 `npm publish ./dist/meitu-wink-cli-<version>.tgz --access public --registry=https://registry.npmjs.org/`。`pack:npm` / `publish:npm` 都不修改仓库根 `package.json`；临时打包目录中才将包名设为 `meitu-wink-cli`，去除 private 和仓库开发脚本。不要在根目录直接执行 `npm publish`。
 
 两种安装器之间切换时，仅迁移由 Wink 自身包管理的命令入口，保留已有包文件和登录凭据；安装失败时恢复旧入口。npm 源与 Git 默认分支是独立发布渠道：本次恢复旧专家安装只需将 Git 修复推送到旧脚本克隆的默认分支；发布 npm 本身不会修复 Git 根包名。
 
@@ -129,6 +135,41 @@ CLI 不推断性别偏好；需要显式指定 `--gender`、`--style` 或至少�
 - 余额请求沿用所选环境的 API 地址及现有 `api_key`；客户端配置了账号 `Access-Token` 时也会携带该请求头。服务端是否支持 CLI 的 `api_key` 鉴权仍需真实接口联调确认。
 
 设备编号 `gnum` 使用十进制正整数（int64）。CLI 优先使用 `WINK_TASK_GNUM`，其次读取本地 `task-gnum`，再尝试迁移旧 SDK `datareport/dataReport.json` 中的有效 `gid`；均不可用时，使用加密随机数生成 `1` 至 `9223372036854775807` 范围内的编号并缓存，后续运行保持不变。全程以字符串传参，避免整数精度丢失。本地生成仅保证格式有效，不等同于服务端发号；服务端是否接受新编号仍需联调确认。
+
+投递渠道 `client_channel_id` 默认按调用 Agent 推断：WorkBuddy（专家 / Skill）为 `workbuddy`，Cursor / Claude Code / Codex 分别为 `cursor` / `claude` / `codex`，普通终端为 `cli`。可用 `--channel-id` 或 `WINK_TASK_CHANNEL_ID` 覆盖。
+
+机型 `client_model` 仅在投递 `/task/submit` 时携带；列表、查询等接口不传。默认自动采集：macOS 优先 CPU 营销名（如 `Apple M4`），Windows 优先 CPU 名（缺失时回退电脑型号），Android / 鸿蒙优先产品型号，iOS 使用宿主提示。可用 `--client-model` 或 `WINK_TASK_CLIENT_MODEL` 覆盖。
+
+### WorkBuddy 实时进度
+
+```bash
+wink-cli picture_quality --level 2 --input "/absolute/path/photo.jpg" --json --progress-json
+```
+
+保留命令的持续进程句柄，增量读取 stderr，不要等命令结束才读取。`--progress-json` 将文件进度改为一行一个 JSON 事件；stderr 仍可能包含普通诊断文本，按完整行解析，仅消费 `type === "progress"` 的对象。stdout 继续只提供原有最终结果 JSON（使用 `--json` 时）。没有新事件不代表任务停止，相同事件可能去重；处理状态默认约每 1 秒查询一次，另加请求耗时。
+
+```json
+{"type":"progress","file":"/absolute/path/photo.jpg","phase":"processing","task_id":"example-task","elapsed_ms":5000,"remaining_ms":3000,"message":"正在处理，预计还需 3 秒"}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `phase` | `uploading`、`processing`、`waiting_recharge`、`completed`、`failed` |
+| `file` | 输入文件绝对路径，多文件时按此区分 |
+| `task_id` | 提交成功后的任务 ID，此前为 `null` |
+| `elapsed_ms` | 从提交成功开始实际经过的毫秒数，含排队和查询等待，不含上传、提交前充值等待；提交前为 `null` |
+| `remaining_ms` | 服务端预估剩余毫秒数，缺失或无效为 `null`；完成时为 `0`，失败时为 `null` |
+| `upload_percent` | 仅上传阶段提供，确认上传成功才为 `100` |
+| `result_url` | 仅完成事件提供，仍以最终结果 JSON 为交付依据 |
+| `message` | 展示文案；等待充值时包含充值提示，失败时包含原因 |
+
+上传阶段 `message` 形如 `上传中 N%`，并带 `upload_percent`。云处理阶段显示“正在处理，预计还需 X 秒”，X 为 `Math.ceil(remaining_ms / 1000)`；`remaining_ms === null` 时显示“正在估算剩余时间”。任务仍在处理但预估归零时显示“已超过预计时间 N 秒，当前任务可能比较多，请您耐心等待”，N 为自预估归零起已等待的整秒数，只能依据 `completed` 判定完成。终端进度用人可读的文件名单行刷新；`--progress-json` 的 `file` 仍是完整路径。不要把剩余时间换算成真实处理百分比，不将 `elapsed_ms + remaining_ms` 当作固定预计总时长。启动/配置等发生在文件处理前的错误仍通过诊断文本和退出码报告，宿主必须处理非零退出及异常中断。
+
+启动业务命令、开始上传素材之前，同一批次先提示一次（不要等 `task_id`，也不要编造“任务提交成功”）。WorkBuddy 等 Agent 宿主不要依赖聊天／时间线实时刷进度（平台会折叠工具输出且无法改写气泡）；发提示后用一条命令跑完并等待结束，用户可到最近任务页查看进度。本地终端仍可用 `--progress-json` 或 `agent_run_progress.js` 看同行刷新：
+
+> 批量任务、较长视频或较大文件通常需要更多处理时间。任务会在云端持续处理，你可以前往【[查看最近任务](https://wink.cn/editor/recent-task)】查看最新进度，或等待全部完成后通知你。
+
+若进程中断或超时，如实说明自动等待中断，不再承诺自动通知。
 
 为兼容已有 CLI 安装，登录凭据与设备标识仍沿用 `~/.wink-mcp-server/` 历史目录。完整环境说明、参数示例及退出码见 [CLI-TESTING.md](CLI-TESTING.md)。
 

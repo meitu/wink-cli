@@ -19,4 +19,6 @@ description: 使用已安装的 Wink CLI 对图片或视频做云端画质修复
 
 登录由 CLI 的正常流程处理；WorkBuddy 中也可通过连接器完成授权。读取 Skill 不代表用户已授权收费处理。只交付 CLI 判定成功的真实结果链接，显示为“查看优化后素材”，最近任务入口显示为“查看最近任务”。不要回显凭据或将原素材链接作为成功结果。
 
+专家执行时遵守完整说明中的“输入与输出规范”：上传前先发固定提示（含最近任务链接）；再用一条业务命令（可加 `--json --progress-json`，或 `agent_run_progress.js`）跑完并等待结束。WorkBuddy 里不要用 sleep 轮询／TaskUpdate／多条聊天气泡假装实时进度；聊天只保留提示、充值与最终交付。
+
 安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.1 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。

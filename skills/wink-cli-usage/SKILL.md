@@ -115,6 +115,22 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 - 含空格的路径必须整体加双引号。
 - `--output` 与 `--force` 仅作旧命令兼容，**传入会被忽略**，不要在示例或给用户的命令里使用。
 - 加 `--json` 后，结构化汇总走 stdout，过程日志走 stderr。
+- 投递渠道 `client_channel_id` 由 CLI 按 Agent 环境自动推断（WorkBuddy 专家 / Skill → `workbuddy`；Cursor / Claude / Codex → 对应值；普通终端 → `cli`）。一般不必手写；仅在排障或明确要求时用 `--channel-id` 或环境变量 `WINK_TASK_CHANNEL_ID` 覆盖。
+- 机型 `client_model` 仅在投递时由 CLI 自动采集并携带（如 macOS `Apple M4`）；列表/查询等接口不传。一般不必手写，可用 `--client-model` 或 `WINK_TASK_CLIENT_MODEL` 覆盖。
+- WorkBuddy 里**不要追求聊天／时间线的实时进度刷屏**：平台会把长命令放后台、折叠工具输出，也无法原地改写聊天气泡；sleep 轮询、TaskUpdate、`\\r` 同行刷新、HTML 预览都无法稳定做到「一行进度」。
+- WorkBuddy 推荐流程：
+  1. **素材上传之前**先发下面提示一次（“查看最近任务”必须是可点击超链接）；
+  2. 用**一条**业务命令跑完（`wink-cli <命令> ... --json --progress-json`，或 `node "<meitu-wink-cli>/src/agent_run_progress.js" <参数...>`）；
+  3. 等待该命令结束，再按 stdout 最终 JSON 交付；
+  4. 聊天不要连续发 `上传中 N%`／`预计还需 X 秒`，也不要为进度反复 TaskUpdate／sleep 读日志。
+- **素材上传之前**提示文案（同一批次只一次；不要等 `task_id` 或上传中再发；不要编造“任务提交成功”）：
+
+  批量任务、较长视频或较大文件通常需要更多处理时间。任务会在云端持续处理，你可以前往【[查看最近任务](https://wink.cn/editor/recent-task)】查看最新进度，或等待全部完成后通知你。
+
+- 本地终端（非 WorkBuddy）仍可用 `--progress-json` 或 `agent_run_progress.js` 看同行进度；那是终端能力，不要当成 WorkBuddy 聊天 UI 承诺。
+- 进度事件字段：`file`、`phase`（`uploading` / `processing` / `waiting_recharge` / `completed` / `failed`）、`task_id`、`elapsed_ms`、`remaining_ms`、`upload_percent`、`result_url`、`message`。上传 `message` 形如 `上传中 N%`；处理为“正在处理，预计还需 X 秒”／“正在估算剩余时间”／“已超过预计时间 N 秒，当前任务可能比较多，请您耐心等待”。
+- 收到 `waiting_recharge` 时立即按充值规则在聊天提示；只在最终成功时交付。检查退出码和最终汇总。
+- 发出上传前提示后继续等待原命令结束再汇总；不要发完提示就结束等待，不重复投递。进程中断或超时时如实说明并提供最近任务链接。
 
 ### 结果交付与链接时效
 
@@ -122,7 +138,6 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 - **下载链接约 3 小时过期**，交付时必须提醒用户尽快下载。
 - 任务提交后到过期前，用户都可以在 [查看最近任务](https://wink.cn/editor/recent-task) 查看已提交的任务并获取结果；**任务 7 天后过期**，到期后无法取回。
 - 交付时使用下文“WorkBuddy 链接展示”的统一模板，结果标题为“查看优化后素材”，任务入口标题为“查看最近任务”。
-- **任务投递完成时**（上传成功、进入处理排队后）即可提示用户：可随时到 [查看最近任务](https://wink.cn/editor/recent-task) 查看任务进度。
 
 `--json` 输出结构：
 

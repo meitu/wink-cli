@@ -204,13 +204,29 @@ async function capture(fn) {
     assert.ok(!fs.existsSync(outDir), "legacy --output must not create a directory");
     assert.ok(!events.includes("download"), "never request result media");
     for (const file of [photo, video]) {
-      assert.ok(mixed.err.includes(`${file} 上传中：8%`));
-      assert.ok(mixed.err.includes(`${file} 上传中：100%`));
-      assert.ok(mixed.err.includes(`${file} 处理中：剩余1分1秒`));
-      assert.ok(!mixed.err.includes(`${file} 下载中：`));
-      assert.strictEqual(mixed.err.split(`${file} 上传中：8%`).length - 1, 1, "duplicate progress is suppressed");
+      const label = path.basename(file);
+      assert.ok(mixed.err.includes(`${label} 上传中：8%`));
+      assert.ok(mixed.err.includes(`${label} 上传中：100%`));
+      assert.ok(mixed.err.includes(`${label} 处理中：正在处理，预计还需 61 秒`));
+      assert.ok(!mixed.err.includes(`${label} 下载中：`));
+      assert.strictEqual(mixed.err.split(`${label} 上传中：8%`).length - 1, 1, "duplicate progress is suppressed");
     }
     assert.ok(!/upload progress=|task_id=|content_type=|\x1b/.test(mixed.err));
+
+    const streamed = await capture(() => main([...args(inputDir), "--progress-json"], services));
+    assert.strictEqual(streamed.code, 0, streamed.err);
+    const streamSummary = JSON.parse(streamed.out);
+    const progressEvents = streamed.err.split("\n").filter(line => line.startsWith('{"type":"progress"')).map(line => JSON.parse(line));
+    for (const result of streamSummary.results) {
+      const perFile = progressEvents.filter(event => event.file === result.file);
+      assert.strictEqual(perFile[0].phase, "uploading");
+      assert.strictEqual(perFile[0].elapsed_ms, null);
+      assert.ok(perFile.some(event => event.phase === "processing" && event.remaining_ms === 61000 && event.elapsed_ms >= 0 && event.task_id));
+      assert.strictEqual(perFile.at(-1).phase, "completed");
+      assert.strictEqual(perFile.at(-1).result_url, result.result_url);
+      assert.strictEqual(perFile.filter(event => event.phase === "completed").length, 1);
+    }
+    assert.ok(!streamed.err.includes("\x1b"));
 
     for (const rechargeMode of ["recharge-json", "recharge-http", "recharge-invalid", "recharge-missing-route"]) {
       mode = rechargeMode; events = []; rechargeSubmits = balanceCalls = 0;
@@ -329,12 +345,17 @@ async function capture(fn) {
     assert.ok(!parameterFailure.err.includes("test-key"), "errors must not expose credentials");
 
     events = []; mode = "algorithm-failure";
-    const algorithmFailure = await capture(() => main(args(video), services));
+    const algorithmFailure = await capture(() => main([...args(video), "--progress-json"], services));
     assert.strictEqual(algorithmFailure.code, 3);
     assert.match(algorithmFailure.err, /PROCESS_IMAGE_ERROR.*code=29903.*task_id=task-/);
     const failedResult = JSON.parse(algorithmFailure.out).results[0];
     assert.strictEqual(failedResult.error_code, 29903);
     assert.match(failedResult.task_id, /^task-/);
+    const failureEvents = algorithmFailure.err.split("\n").filter(line => line.startsWith('{"type":"progress"')).map(line => JSON.parse(line));
+    assert.strictEqual(failureEvents.at(-1).phase, "failed");
+    assert.strictEqual(failureEvents.at(-1).task_id, failedResult.task_id);
+    assert.strictEqual(failureEvents.at(-1).remaining_ms, null);
+    assert.ok(!failureEvents.some(event => event.phase === "completed"));
     assert.ok(!events.includes("download"));
     queryCount = 0;
 

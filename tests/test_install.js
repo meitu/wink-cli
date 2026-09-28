@@ -53,7 +53,7 @@ try {
   }
   const help = run(["install", "--help"]);
   assert.strictEqual(help.status, 0, help.stderr);
-  assert.match(help.stdout, /npx --yes meitu-wink-cli@1\.14\.2 install/);
+  assert.match(help.stdout, new RegExp(`npx --yes meitu-wink-cli@${require("../package.json").version.replace(/\./g, "\\.")} install`));
   assert.ok(!fs.existsSync(log), "help must not install or log in");
   for (const args of [["--prefix"], ["--prefix="], ["--force"], ["extra"], ["--skill-dir"], ["--skill-dir="],
     ["--skip-skills=false"], ["--skip-skills", "--skill-dir", temp]]) {

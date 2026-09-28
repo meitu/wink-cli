@@ -56,7 +56,14 @@ const COMMANDS = Object.freeze({
 
 function prepareTool(command, flags) {
   const params = {}, submit = {};
-  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json"]);
+  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json", "progress-json", "channel-id", "client-model"]);
+  if (flags["progress-json"] !== undefined && flags["progress-json"] !== true) throw new WinkError("--progress-json 是开关，不接受参数值");
+  if (flags["channel-id"] !== undefined) {
+    if (typeof flags["channel-id"] !== "string" || !flags["channel-id"].trim()) throw new WinkError("--channel-id 需要非空渠道值");
+  }
+  if (flags["client-model"] !== undefined) {
+    if (typeof flags["client-model"] !== "string" || !flags["client-model"].trim()) throw new WinkError("--client-model 需要非空机型值");
+  }
   if (command === "ai_beauty") allowed.add("retouch-params"); // 为旧入口给出明确迁移提示。
   for (const line of COMMANDS[command].options || []) {
     const key = /^--([a-z-]+)/.exec(line)?.[1];

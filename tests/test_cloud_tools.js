@@ -30,7 +30,7 @@ async function capture(fn) {
     res.setHeader("Content-Type", "application/json");
     if (req.url.startsWith("/material/ai_beauty/list")) return res.end(JSON.stringify({ code: 0, data: { cursor: "", item_list: [{ material_id: 67201, name: "自然", media_type_limit: 0, material_conf: { parameter: { smoothing: 0.5 } } }] } }));
     if (req.url.startsWith("/task/ai_type_config")) return res.end(JSON.stringify({ code: 0, data: configs }));
-    if (req.url === "/task/submit") { submitted = Object.fromEntries(new URLSearchParams(body)); return res.end(JSON.stringify({ code: 0, data: { msg_id: "mock-task" } })); }
+    if (req.url.startsWith("/task/submit")) { submitted = Object.fromEntries(new URLSearchParams(body)); return res.end(JSON.stringify({ code: 0, data: { msg_id: "mock-task" } })); }
     if (req.url.startsWith("/task/query")) return res.end(JSON.stringify({ code: 0, data: { result: { error_code: 0, parameter: { exist_watermark: true }, media_info_list: [{ media_data: base + "/result.jpg" }] }, url: base + "/original.jpg" } }));
     if (req.url === "/result.jpg") return res.end("processed");
     res.statusCode = 404; res.end();

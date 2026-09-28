@@ -48,6 +48,7 @@ class WinkError extends Error {}
 
 const { isInsufficientBeans } = require("./beans");
 const { normalizeGnum, resolveGnumSync } = require("./device_id");
+const { detectClientModel } = require("./client_model");
 
 function responseOk(payload) {
   return Boolean(payload && typeof payload === "object" && payload.code === 0);
@@ -316,7 +317,7 @@ class WinkClient {
    */
   async run(resourceUrl, options = {}) {
     if (!resourceUrl || typeof resourceUrl !== "string") throw new WinkError("resource_url is required");
-    const interval = positiveNumber(options.interval, 3);
+    const interval = positiveNumber(options.interval, 1);
     const timeout = positiveNumber(options.timeout, 600);
     let submitted;
     while (true) {
@@ -334,6 +335,8 @@ class WinkClient {
     const data = dataObject(submitted);
     const taskId = data.task_id || data.msg_id;
     if (typeof taskId !== "string" || !taskId) throw new WinkError("submit response has no data.task_id / data.msg_id");
+    const started = performance.now();
+    options.onProgress?.({ phase: "running", taskId, elapsedMs: 0, remainingMs: null });
     const deadline = Date.now() + timeout * 1000;
     while (true) {
       const queried = await this.query(taskId, options);
@@ -345,7 +348,9 @@ class WinkClient {
       if (taskData.remaining_elapsed != null) extra.push(`remaining=${taskData.remaining_elapsed}`);
       if (state.msg) extra.push(`msg=${state.msg}`);
       if (options.onProgress) {
-        options.onProgress({ phase: state.phase, taskId, remainingMs: taskData.remaining_elapsed });
+        options.onProgress({ phase: state.phase, taskId,
+          elapsedMs: Math.max(0, Math.round(performance.now() - started)),
+          remainingMs: taskData.remaining_elapsed ?? null });
       } else {
         this.log(`task_id=${taskId} phase=${state.phase}${extra.length ? ` ${extra.join(" ")}` : ""}`);
       }
@@ -407,6 +412,14 @@ function first(...candidates) {
   return undefined;
 }
 
+/** Like first(), but blank strings fall through so auto-detect can run. */
+function firstNonEmpty(...candidates) {
+  for (const value of candidates) {
+    if (value !== undefined && value !== null && String(value) !== "") return value;
+  }
+  return undefined;
+}
+
 /** 根据资源 URL 扩展名推断 content_type（投递资源信息：1-图片 2-视频）；无法判断返回 undefined。 */
 function inferContentType(sourceUrl) {
   let ext = "";
@@ -435,15 +448,47 @@ function taskDefaults(options = {}) {
 }
 
 /**
- * 客户端通用传参块：/task/submit 与 /task/query 共用的头部字段
+ * Infer client_channel_id from the calling Agent host.
+ * WorkBuddy experts/skills → workbuddy; Cursor/Claude/Codex similarly; plain CLI → cli.
+ */
+function detectAgentChannelId(env = process.env, probePaths = []) {
+  const source = env && typeof env === "object" && typeof env !== "function" ? env : {};
+  const keys = Object.keys(source);
+  const hasKey = (name) => keys.some((key) => key === name || key.startsWith(`${name}_`));
+  const pathHit = (...values) => values.some((value) => typeof value === "string" && /(?:^|[/\\])\.workbuddy(?:[/\\]|$)/i.test(value));
+
+  // Caller host signals first; install-path under .workbuddy is only a fallback.
+  if (source.CURSOR_AGENT || source.CURSOR_CONVERSATION_ID || source.CURSOR_EXTENSION_HOST_ROLE === "agent-exec") {
+    return "cursor";
+  }
+  if (source.CLAUDECODE || source.CLAUDE_CODE_ENTRYPOINT || source.CLAUDE_CODE_SESSION_ID) {
+    return "claude";
+  }
+  if (source.CODEX_SHELL === "1" || source.CODEX_THREAD_ID || source.CODEX_CI) {
+    return "codex";
+  }
+  if (source.WORKBUDDY_CONFIG_DIR || source.WORKBUDDY_HOME || hasKey("WORKBUDDY") ||
+      pathHit(source.PWD, source.INIT_CWD, ...probePaths)) {
+    return "workbuddy";
+  }
+  return "cli";
+}
+
+/**
+ * 客户端通用传参块：/task/submit 与 /task/query 等共用的头部字段
  * （client_id/version/client_language/client_channel_id/gnum/country_code/is_test）。
+ * client_model 仅投递接口使用，见 buildSubmitForm。
  * 取值优先级：显式 options > 环境变量（client_id 走 WINK_CLIENT_ID，其余 WINK_TASK_*）
- * > defaults > 文档默认值；
+ * > defaults > 按调用 Agent 推断的渠道 > 文档默认值；
  * 值为空（null/undefined/空串）的字段省略。返回普通对象。
  */
-function clientIdentityParams(options = {}, defaults = {}, envVar = (name) => process.env[name]) {
+function clientIdentityParams(options = {}, defaults = {}, env = process.env) {
   const o = options || {};
   const d = defaults || {};
+  const source = typeof env === "function"
+    ? new Proxy({}, { get: (_, name) => env(String(name)) })
+    : (env || process.env);
+  const envVar = typeof env === "function" ? env : (name) => source[name];
   const params = {};
   const put = (key, value) => {
     if (value !== undefined && value !== null && String(value) !== "") params[key] = String(value);
@@ -451,8 +496,12 @@ function clientIdentityParams(options = {}, defaults = {}, envVar = (name) => pr
   put("client_id", first(o.clientId, envVar("WINK_CLIENT_ID"), d.clientId, DEFAULT_CLIENT_ID));
   put("version", first(o.version, envVar("WINK_TASK_VERSION"), d.version, SERVER_VERSION));
   put("client_language", first(o.clientLanguage, envVar("WINK_TASK_LANGUAGE"), d.clientLanguage, "zh-Hans"));
-  // 沿用服务端已使用的渠道值，纯 CLI 清理不改变投递协议。
-  put("client_channel_id", first(o.channelId, envVar("WINK_TASK_CHANNEL_ID"), d.channelId, "mcp"));
+  put("client_channel_id", firstNonEmpty(
+    o.channelId,
+    envVar("WINK_TASK_CHANNEL_ID"),
+    d.channelId,
+    detectAgentChannelId(source, [typeof process !== "undefined" ? process.execPath : "", typeof process !== "undefined" ? process.argv?.[1] : ""]),
+  ));
   const gnum = first(o.gnum, envVar("WINK_TASK_GNUM"), d.gnum);
   if (gnum !== undefined && gnum !== null) put("gnum", normalizeGnum(gnum));
   put("country_code", first(o.countryCode, envVar("WINK_TASK_COUNTRY_CODE"), d.countryCode));
@@ -462,7 +511,7 @@ function clientIdentityParams(options = {}, defaults = {}, envVar = (name) => pr
 
 /**
  * 组装 /task/submit 的 form 字段（application/x-www-form-urlencoded）。
- * options 键为驼峰（clientId/version/language/channelId/gnum/countryCode/
+ * options 键为驼峰（clientId/version/language/channelId/clientModel/gnum/countryCode/
  * isTest/taskType/height/width/duration/size/coverPic/extParams/typeParams/
  * ticket/rightDetail/groupTaskId/cutRange/contentType/withPrepare/accessToken）。
  * 取值优先级：显式 options > WINK_TASK_* 环境变量 > defaults > 文档默认值；
@@ -479,7 +528,14 @@ function buildSubmitForm(sourceUrl, options = {}, defaults = {}) {
   };
   // 客户端通用传参块（/task/query 共用）：client_id/version/client_language/
   // client_channel_id/gnum/country_code/is_test
-  for (const [key, value] of Object.entries(clientIdentityParams(o, d, envVar))) put(key, value);
+  for (const [key, value] of Object.entries(clientIdentityParams(o, d, process.env))) put(key, value);
+  // client_model 仅 /task/submit 携带；列表/查询等接口不传（含空格的机型名会触发 list 10108）。
+  put("client_model", firstNonEmpty(
+    o.clientModel,
+    envVar("WINK_TASK_CLIENT_MODEL"),
+    d.clientModel,
+    detectClientModel(),
+  ));
   // 资源类型：显式 > env > defaults > 按 URL 扩展名推断（1-图片 2-视频）
   const resolvedContentType = first(o.contentType, envVar("WINK_TASK_CONTENT_TYPE"), d.contentType, inferContentType(sourceUrl));
   // 任务类型（画质修复）：显式 > env > defaults > 按资源类型联动（图片 1→12，视频 2→11）> 兜底 11
@@ -508,7 +564,7 @@ function buildSubmitForm(sourceUrl, options = {}, defaults = {}) {
 /**
  * 组装 GET /task/query 的查询参数（普通对象，由 request 统一做 URL 编码）。
  * 与 /task/submit 共用客户端通用传参块，另加 msg_id；options 键为驼峰
- * （clientId/version/language/channelId/gnum/countryCode/isTest）。
+ * （clientId/version/language/channelId/clientModel/gnum/countryCode/isTest）。
  * @returns {{ msg_id: string, [key: string]: string }}
  */
 function buildQueryParams(msgId, options = {}, defaults = {}) {
@@ -750,4 +806,4 @@ async function downloadResult(remoteUrl, output, options, log = () => {}) {
   return run(0);
 }
 
-module.exports = { WinkClient, WinkError, UploadError, dataObject, responseOk, uploadAccessUrl, resultUrl, downloadResult, generateOnceCode, buildSubmitForm, buildQueryParams, buildAiTypeConfigParams, taskState, inferContentType, inferTaskType, checkAiTypeSupport, resolveGnumSync };
+module.exports = { WinkClient, WinkError, UploadError, dataObject, responseOk, uploadAccessUrl, resultUrl, downloadResult, generateOnceCode, buildSubmitForm, buildQueryParams, buildAiTypeConfigParams, taskState, inferContentType, inferTaskType, checkAiTypeSupport, resolveGnumSync, detectAgentChannelId, detectClientModel, clientIdentityParams };

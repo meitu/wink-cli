@@ -15,6 +15,8 @@ const {
   WinkClient,
   buildSubmitForm,
   buildQueryParams,
+  detectAgentChannelId,
+  detectClientModel,
   buildAiTypeConfigParams,
   taskState,
   resultUrl,
@@ -118,14 +120,22 @@ async function testChunkedUpload(directory) {
 }
 
 async function testSubmitProtocol() {
-  // ---- buildSubmitForm 纯函数（显式注入 gnum，不触碰真实目录）----
-  const defaults = { gnum: "900000001" };
+  // ---- buildSubmitForm 纯函数（显式注入 gnum/channel，不触碰真实目录）----
+  const defaults = { gnum: "900000001", channelId: "cli", clientModel: "Apple M4" };
   const form = buildSubmitForm("https://cdn.example/a b/视频.mp4?token=1&x=2", {}, defaults);
   assert.strictEqual(form.get("client_id"), "1189857724", "default client_id");
   assert.ok(form.get("version"), "version defaulted");
   assert.strictEqual(form.get("client_language"), "zh-Hans");
-  assert.strictEqual(form.get("client_channel_id"), "mcp");
+  assert.strictEqual(form.get("client_channel_id"), "cli");
+  assert.strictEqual(form.get("client_model"), "Apple M4");
   assert.strictEqual(form.get("gnum"), "900000001");
+  assert.strictEqual(detectAgentChannelId({ WORKBUDDY_CONFIG_DIR: "/tmp/.workbuddy" }), "workbuddy");
+  assert.strictEqual(detectAgentChannelId({ CURSOR_AGENT: "1", WORKBUDDY_CONFIG_DIR: "/tmp/.workbuddy" }), "cursor", "host agent beats install path");
+  assert.strictEqual(detectAgentChannelId({ CLAUDECODE: "1" }), "claude");
+  assert.strictEqual(detectAgentChannelId({ CODEX_SHELL: "1" }), "codex");
+  assert.strictEqual(detectAgentChannelId({}, ["/Users/x/.workbuddy/binaries/node/bin/node"]), "workbuddy");
+  assert.strictEqual(detectAgentChannelId({}), "cli");
+  assert.strictEqual(detectClientModel({ platform: "darwin", env: {}, cpus: [{ model: "Apple M4" }], useCache: false }), "Apple M4");
   assert.strictEqual(form.get("type"), "11", "mp4 -> video task type 11 (inferred from content_type=2)");
   assert.strictEqual(form.get("ext_params"), "{}");
   assert.ok(JSON.parse(form.get("right_detail")).function_id, "right_detail JSON default");
@@ -208,13 +218,14 @@ async function testSubmitProtocol() {
 
 async function testQueryProtocol() {
   // ---- buildQueryParams（GET /task/query 查询参数，显式注入 gnum 防触碰真实目录）----
-  const defaults = { gnum: "900000001" };
+  const defaults = { gnum: "900000001", channelId: "cli", clientModel: "Apple M4" };
   const params = buildQueryParams("unit-msg", {}, defaults);
   assert.strictEqual(params.msg_id, "unit-msg");
   assert.strictEqual(params.client_id, "1189857724", "default client_id");
   assert.ok(params.version, "version defaulted");
   assert.strictEqual(params.client_language, "zh-Hans");
-  assert.strictEqual(params.client_channel_id, "mcp");
+  assert.strictEqual(params.client_channel_id, "cli");
+  assert.strictEqual(params.client_model, undefined, "client_model is submit-only");
   assert.strictEqual(params.gnum, "900000001");
   for (const key of ["country_code", "is_test"]) {
     assert.strictEqual(params[key], undefined, `${key} omitted when unset`);
@@ -315,7 +326,7 @@ async function testUploadSubmitDownload(directory) {
   saveEnv("WINK_TASK_GNUM");
   process.env.WINK_TASK_GNUM = "900000005";
   let baseUrl = "";
-  const received = { submitCt: "", submitBody: "", queryUrls: [], queryCount: 0 };
+  const received = { submitCt: "", submitBody: "", submitUrl: "", queryUrls: [], queryCount: 0 };
   const server = http.createServer((req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
@@ -326,6 +337,7 @@ async function testUploadSubmitDownload(directory) {
       } else if (req.url.startsWith("/upload")) {
         res.end(JSON.stringify({ url: `${baseUrl}/resource.mp4` }));
       } else if (req.url.startsWith("/task/submit")) {
+        received.submitUrl = req.url;
         received.submitCt = req.headers["content-type"] || "";
         received.submitBody = Buffer.concat(chunks).toString("utf8");
         res.end(JSON.stringify({ code: 0, data: { msg_id: "local-msg", error_code: 0 } }));
@@ -387,6 +399,8 @@ async function testUploadSubmitDownload(directory) {
     assert.strictEqual(body.get("gnum"), "900000005");
     assert.strictEqual(body.get("with_prepare"), "0");
     assert.ok(body.get("type") && body.get("client_id") && body.get("version"), "required fields present");
+    assert.ok(body.get("client_model"), "client_model present in submit body only");
+    assert.ok(!new URL(received.submitUrl, "http://local").searchParams.has("client_model"), "client_model not on submit query");
     // 轮询用 submit 返回的 msg_id，走新客户端查询协议（msg_id + 通用传参，无 task_id）
     assert.ok(received.queryUrls.length >= 2, `polls until finish (was ${received.queryUrls.length})`);
     const firstQuery = new URL(`http://local${received.queryUrls[0]}`);
@@ -395,6 +409,7 @@ async function testUploadSubmitDownload(directory) {
     assert.strictEqual(firstQuery.searchParams.get("client_id"), "1189857724");
     assert.strictEqual(firstQuery.searchParams.get("gnum"), "900000005");
     assert.ok(firstQuery.searchParams.get("version"), "client version present");
+    assert.ok(!firstQuery.searchParams.has("client_model"), "client_model omitted from query APIs");
   } finally {
     restoreEnv();
     await new Promise((resolve) => server.close(resolve));

@@ -3,7 +3,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const { installAgentSkills } = require("./agent_skills");
 
 const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Agent 安装使用 Skill
@@ -74,7 +74,34 @@ function moveLegacyCommands(globalRoot, binDir, backupDir, packageName = require
   return restore;
 }
 
-function installCli(flags = {}) {
+/** Async npm runner: WorkBuddy sandboxes often block spawnSync with EBUSY while allowing spawn. */
+function runNpm(executable, leadingArgs, args, { inherit = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, [...leadingArgs, ...args], {
+      cwd: os.tmpdir(),
+      windowsHide: true,
+      stdio: inherit ? "inherit" : ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    if (!inherit) {
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+    }
+    child.once("error", (error) => {
+      reject(new Error(`无法运行 npm: ${error.message}`));
+    });
+    child.once("close", (status, signal) => {
+      if (status !== 0) {
+        reject(new Error(`npm ${args[0]} 失败（${signal || status}）。${stderr ? `\n${stderr.trim()}` : "请检查上方 npm 错误；权限不足时可用 --prefix 指定可写目录。"}`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+async function installCli(flags = {}) {
   const unknown = Object.keys(flags).filter(key => !["prefix", "skill-dir", "skip-skills", "help", "h"].includes(key));
   if (unknown.length) throw new Error(`install 不支持参数: ${unknown.map(key => `--${key}`).join(", ")}`);
   if (flags.prefix !== undefined && (typeof flags.prefix !== "string" || !flags.prefix.trim())) {
@@ -87,36 +114,24 @@ function installCli(flags = {}) {
   if (flags["skip-skills"] && flags["skill-dir"]) throw new Error("--skip-skills 与 --skill-dir 不能同时使用");
   const prefixArgs = flags.prefix ? ["--prefix", path.resolve(flags.prefix)] : [];
   const [executable, leadingArgs] = npmCommand();
-  function npm(args, inherit = false) {
-    const result = spawnSync(executable, [...leadingArgs, ...args], {
-      cwd: os.tmpdir(),
-      encoding: "utf8",
-      stdio: inherit ? "inherit" : "pipe",
-      windowsHide: true,
-    });
-    if (result.error) throw new Error(`无法运行 npm: ${result.error.message}`);
-    if (result.status !== 0) {
-      throw new Error(`npm ${args[0]} 失败（${result.signal || result.status}）。${result.stderr ? `\n${result.stderr.trim()}` : "请检查上方 npm 错误；权限不足时可用 --prefix 指定可写目录。"}`);
-    }
-    return result.stdout || "";
-  }
+  const npm = (args, inherit = false) => runNpm(executable, leadingArgs, args, { inherit });
 
-  const prefix = npm(["prefix", "--global", ...prefixArgs]).trim();
+  const prefix = (await npm(["prefix", "--global", ...prefixArgs])).trim();
   const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "wink-install-"));
   try {
     process.stdout.write(`正在安装 Wink CLI 到 ${prefix}…\n`);
     // Pack first: npm install -g <directory> would link into the disposable npx cache.
-    const packed = JSON.parse(npm([
+    const packed = JSON.parse(await npm([
       "pack", path.resolve(__dirname, ".."), "--pack-destination", temp, "--json", "--ignore-scripts",
     ]));
     if (!packed[0] || !packed[0].filename || path.basename(packed[0].filename) !== packed[0].filename) {
       throw new Error("npm pack 未返回有效的安装包文件名");
     }
-    const globalRoot = npm(["root", "--global", ...prefixArgs]).trim();
+    const globalRoot = (await npm(["root", "--global", ...prefixArgs])).trim();
     const restoreLegacy = moveLegacyCommands(globalRoot, binDir, temp);
     try {
-      npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
+      await npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
     } catch (error) { restoreLegacy(); throw error; }
     process.stdout.write(`CLI 安装完成。命令目录: ${binDir}\n`);
     process.stdout.write("请在终端运行 wink-cli --help。若提示找不到命令，请将上述命令目录加入 PATH 后重新打开终端。\n");
@@ -147,4 +162,4 @@ function installCli(flags = {}) {
   }
 }
 
-module.exports = { INSTALL_HELP, installCli, moveLegacyCommands };
+module.exports = { INSTALL_HELP, installCli, moveLegacyCommands, runNpm };
