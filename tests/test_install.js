@@ -55,7 +55,7 @@ try {
   assert.strictEqual(help.status, 0, help.stderr);
   assert.match(help.stdout, new RegExp(`npx --yes meitu-wink-cli@${require("../package.json").version.replace(/\./g, "\\.")} install`));
   assert.ok(!fs.existsSync(log), "help must not install or log in");
-  for (const args of [["--prefix"], ["--prefix="], ["--force"], ["extra"], ["--skill-dir"], ["--skill-dir="],
+  for (const args of [["--prefix"], ["--prefix="], ["--force=1"], ["extra"], ["--skill-dir"], ["--skill-dir="],
     ["--skip-skills=false"], ["--skip-skills", "--skill-dir", temp]]) {
     const result = run(["install", ...args]);
     assert.strictEqual(result.status, 1, JSON.stringify(args));
@@ -65,9 +65,9 @@ try {
   assert.strictEqual(installed.status, 0, installed.stderr);
   assert.match(installed.stdout, /安装完成/);
   let calls = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
-  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "pack", "root", "install"]);
-  assert.strictEqual(calls[1][1], root);
-  assert.ok(calls[1].includes("--ignore-scripts"));
+  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "root", "pack", "install"]);
+  assert.strictEqual(calls[2][1], root);
+  assert.ok(calls[2].includes("--ignore-scripts"));
   assert.ok(calls[3][2].endsWith(".tgz"), "install an archive, never link to npx cache");
   assert.strictEqual(calls[3][calls[3].indexOf("--prefix") + 1], prefix);
   assert.ok(!fs.existsSync(path.dirname(calls[3][2])), "temporary archive must be removed");
@@ -89,12 +89,30 @@ try {
   assert.strictEqual(skipped.status, 0, skipped.stderr);
   assert.ok(!fs.existsSync(skillDirectory), "skip option must not write Agent files");
   calls = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
-  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "pack", "root", "install"]);
+  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "root", "pack", "install"]);
   const custom = path.join(temp, "custom skills");
   const customResult = run(["install", "--prefix", prefix, "--skill-dir", custom]);
   assert.strictEqual(customResult.status, 0, customResult.stderr);
   assert.ok(fs.existsSync(path.join(custom, "wink-cli-usage/SKILL.md")));
   assert.ok(!fs.existsSync(skillDirectory), "custom directory overrides auto detection");
+  // Newer local build must not be downgraded by an older installer package.
+  const newerRoot = path.join(prefix, "node_modules/meitu-wink-cli");
+  fs.mkdirSync(path.join(newerRoot, "src"), { recursive: true });
+  fs.writeFileSync(path.join(newerRoot, "package.json"), JSON.stringify({ name: "meitu-wink-cli", version: "9.9.9" }));
+  fs.writeFileSync(path.join(newerRoot, "src/cli.js"), "// newer");
+  fs.unlinkSync(log);
+  const blocked = run(["install", "--prefix", prefix, "--skip-skills"]);
+  assert.strictEqual(blocked.status, 0, blocked.stderr);
+  assert.match(blocked.stdout, /跳过降级安装/);
+  calls = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
+  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "root"], "downgrade skip may query paths but must not pack/install");
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(newerRoot, "package.json"), "utf8")).version, "9.9.9");
+  fs.unlinkSync(log);
+  const forced = run(["install", "--prefix", prefix, "--skip-skills", "--force"]);
+  assert.strictEqual(forced.status, 0, forced.stderr);
+  assert.match(forced.stdout, /安装完成/);
+  calls = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
+  assert.deepStrictEqual(calls.map(args => args[0]), ["prefix", "root", "pack", "install"]);
   const pkg = require("../package.json");
   assert.strictEqual(pkg.name, "wink-cli");
   assert.strictEqual(pkg.private, true, "Git compatibility package must not publish as the unrelated npm wink-cli");

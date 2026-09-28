@@ -10,12 +10,13 @@ const INSTALL_HELP = `wink-cli install — 安装 CLI，并为本机已有的 Ag
 
 用法:
   npx --yes meitu-wink-cli@${require("../package.json").version} install
-  wink-cli install [--prefix <目录>] [--skill-dir <目录> | --skip-skills]
+  wink-cli install [--prefix <目录>] [--skill-dir <目录> | --skip-skills] [--force]
 
 选项:
   --prefix <目录>   自定义 npm 安装前缀（需要自行将命令目录加入 PATH）
   --skill-dir <目录> 指定 Skill 根目录，在其下安装 wink-cli-usage（代替自动检测）
   --skip-skills      只安装 CLI，不写入 Agent 技能目录
+  --force            允许用当前包覆盖已安装的更高版本（默认拒绝降级）
   -h, --help        显示本帮助
 
 安装后使用 wink-cli --help。需要 Node.js 18+ 和 npm，并能访问 npm 源；不需要 Git。
@@ -34,6 +35,33 @@ function npmCommand() {
   if (cli) return [process.execPath, [cli]];
   if (process.platform !== "win32") return ["npm", []];
   throw new Error("未找到 npm，请安装包含 npm 的 Node.js，或使用 npx 运行安装命令。");
+}
+
+function versionTuple(value) {
+  if (!/^\d+\.\d+\.\d+$/.test(value || "")) throw new Error(`无效版本：${value}`);
+  return value.split(".").map(Number);
+}
+
+function versionGreater(left, right) {
+  const a = versionTuple(left), b = versionTuple(right);
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return false;
+}
+
+function readInstalledCli(globalRoot) {
+  for (const name of ["meitu-wink-cli", "wink-cli", "wink-cli-v2"]) {
+    const packageJson = path.join(globalRoot, name, "package.json");
+    try {
+      const meta = JSON.parse(fs.readFileSync(packageJson, "utf8"));
+      if (meta.name === name && /^\d+\.\d+\.\d+$/.test(meta.version || "")) {
+        return { name, version: meta.version, root: path.join(globalRoot, name) };
+      }
+    } catch (_) { /* missing or unreadable */ }
+  }
+  return null;
 }
 
 // Keep package contents intact; move command entries owned by a different
@@ -102,7 +130,7 @@ function runNpm(executable, leadingArgs, args, { inherit = false } = {}) {
 }
 
 async function installCli(flags = {}) {
-  const unknown = Object.keys(flags).filter(key => !["prefix", "skill-dir", "skip-skills", "help", "h"].includes(key));
+  const unknown = Object.keys(flags).filter(key => !["prefix", "skill-dir", "skip-skills", "force", "help", "h"].includes(key));
   if (unknown.length) throw new Error(`install 不支持参数: ${unknown.map(key => `--${key}`).join(", ")}`);
   if (flags.prefix !== undefined && (typeof flags.prefix !== "string" || !flags.prefix.trim())) {
     throw new Error("--prefix 需要指定安装目录");
@@ -111,6 +139,7 @@ async function installCli(flags = {}) {
     throw new Error("--skill-dir 需要指定 Skill 根目录");
   }
   if (flags["skip-skills"] !== undefined && flags["skip-skills"] !== true) throw new Error("--skip-skills 不接受参数值");
+  if (flags.force !== undefined && flags.force !== true) throw new Error("--force 不接受参数值");
   if (flags["skip-skills"] && flags["skill-dir"]) throw new Error("--skip-skills 与 --skill-dir 不能同时使用");
   const prefixArgs = flags.prefix ? ["--prefix", path.resolve(flags.prefix)] : [];
   const [executable, leadingArgs] = npmCommand();
@@ -118,6 +147,16 @@ async function installCli(flags = {}) {
 
   const prefix = (await npm(["prefix", "--global", ...prefixArgs])).trim();
   const binDir = process.platform === "win32" ? prefix : path.join(prefix, "bin");
+  const globalRoot = (await npm(["root", "--global", ...prefixArgs])).trim();
+  const incoming = require("../package.json");
+  const existing = readInstalledCli(globalRoot);
+  if (existing && versionGreater(existing.version, incoming.version) && !flags.force) {
+    process.stdout.write(
+      `已安装 ${existing.name}@${existing.version}，高于本次 ${incoming.name}@${incoming.version}，跳过降级安装。\n`
+      + `如需强制覆盖为 ${incoming.version}，请加 --force。\n`
+      + `当前 CLI 目录: ${existing.root}\n`);
+    return 0;
+  }
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "wink-install-"));
   try {
     process.stdout.write(`正在安装 Wink CLI 到 ${prefix}…\n`);
@@ -128,7 +167,6 @@ async function installCli(flags = {}) {
     if (!packed[0] || !packed[0].filename || path.basename(packed[0].filename) !== packed[0].filename) {
       throw new Error("npm pack 未返回有效的安装包文件名");
     }
-    const globalRoot = (await npm(["root", "--global", ...prefixArgs])).trim();
     const restoreLegacy = moveLegacyCommands(globalRoot, binDir, temp);
     try {
       await npm(["install", "--global", path.join(temp, packed[0].filename), ...prefixArgs, "--no-audit", "--no-fund"], true);
@@ -162,4 +200,4 @@ async function installCli(flags = {}) {
   }
 }
 
-module.exports = { INSTALL_HELP, installCli, moveLegacyCommands, runNpm };
+module.exports = { INSTALL_HELP, installCli, moveLegacyCommands, runNpm, readInstalledCli, versionGreater };
