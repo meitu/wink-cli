@@ -131,7 +131,16 @@ try {
   fs.writeFileSync(path.join(oldRoot, "skills/wink-cli-usage/SKILL.md"), "legacy");
   fs.writeFileSync(path.join(oldRoot, "src/cli.js"), "legacy");
   const oldLink = path.join(oldBin, "wink-cli");
-  fs.symlinkSync("../node_modules/wink-cli/src/cli.js", oldLink);
+  const linkTarget = "../node_modules/wink-cli/src/cli.js";
+  // Windows without Developer Mode cannot create symlinks (EPERM); npm uses file shims there.
+  let usedSymlink = false;
+  try {
+    fs.symlinkSync(linkTarget, oldLink);
+    usedSymlink = true;
+  } catch (error) {
+    if (!["EPERM", "EACCES"].includes(error.code)) throw error;
+    fs.writeFileSync(oldLink, `#!/bin/sh\nnode "$(dirname "$0")/../node_modules/wink-cli/src/cli.js" "$@"\n`);
+  }
   const shim = path.join(oldBin, "wink-cli.cmd");
   fs.writeFileSync(shim, 'node "%dp0%/node_modules/wink-cli/src/cli.js"');
   const foreign = path.join(oldBin, "wink-connector");
@@ -141,7 +150,11 @@ try {
   assert.strictEqual(fs.readFileSync(foreign, "utf8"), "unrelated command");
   assert(fs.existsSync(path.join(oldRoot, "src/cli.js")), "keep old package and credentials intact");
   restore();
-  assert.strictEqual(fs.readlinkSync(oldLink), "../node_modules/wink-cli/src/cli.js");
+  if (usedSymlink) {
+    assert.strictEqual(fs.readlinkSync(oldLink), linkTarget);
+  } else {
+    assert.match(fs.readFileSync(oldLink, "utf8").replace(/\\/g, "/"), /node_modules\/wink-cli\/src\/cli\.js/);
+  }
   assert(fs.existsSync(shim));
   console.log("  ok install: help, validation, archive install, paths with spaces, failure and cleanup");
 } finally {
