@@ -104,7 +104,9 @@ async function capture(fn) {
           assert.strictEqual(req.headers.api_key, "test-key");
           if (mode.startsWith("recharge-") && rechargeSubmits++ === 0) {
             if (mode === "recharge-http") res.statusCode = 400;
-            res.end(JSON.stringify({ code: 1999, message: "美豆不足，需6美豆，当前余额0美豆" }));
+            res.end(JSON.stringify({ code: 1999, message: "美豆不足，需6美豆，当前余额0美豆",
+              data: { ...(mode === "recharge-json" ? { msg_id: "rejected&task" } : { task_id: "rejected&task" }),
+                required_credit: 6, balance_credit: 0 } }));
             return;
           }
           if (mode === "http-parameter-failure" || (form.get("content_type") === "2" && form.has("duration") && !/^\d+$/.test(form.get("duration")))) {
@@ -164,7 +166,9 @@ async function capture(fn) {
     fs.copyFileSync(path.join(__dirname, "fixtures", "images", "sample.jpg"), photo);
     fs.writeFileSync(video, "input-video");
     let duration = 9.443333;
+    const tracked = [];
     const services = {
+      tracking: { bind() {}, firstRun() {}, authSuccess() {}, emit: (event, fields) => tracked.push({ event, ...fields }) },
       createClient(options) {
         const client = new WinkClient(options);
         client.withApiKey = (apiKey) => {
@@ -189,6 +193,10 @@ async function capture(fn) {
     const mixed = await capture(() => main(args(inputDir + "," + photo), services));
     assert.strictEqual(mixed.code, 0, mixed.err);
     const summary = JSON.parse(mixed.out);
+    assert.strictEqual(tracked.length, 2);
+    assert.ok(tracked.every(e => e.event === "task_submit" && e.task_id && e.file_count === 1));
+    assert.deepStrictEqual(tracked.map(e => e.media_type).sort(), ["image", "video"]);
+
     assert.strictEqual(summary.total, 2, "directory and explicit file deduplicate");
     assert.strictEqual(summary.succeeded, 2);
     assert.deepStrictEqual(submits.map((x) => x.type).sort(), ["11", "12"]);
@@ -229,10 +237,11 @@ async function capture(fn) {
     assert.ok(!streamed.err.includes("\x1b"));
 
     for (const rechargeMode of ["recharge-json", "recharge-http", "recharge-invalid", "recharge-missing-route"]) {
+      tracked.length = 0;
       mode = rechargeMode; events = []; rechargeSubmits = balanceCalls = 0;
       let clock = 0;
       const opened = [], waits = [], beforeSubmits = submits.length;
-      const charged = await capture(() => main(args(photo), { ...services, recharge: {
+      const charged = await capture(() => main(args(photo), { ...services, tracking: { ...services.tracking, enabled: true }, recharge: {
         now: () => clock,
         sleep: async ms => { assert.strictEqual(ms, 5000); waits.push(ms); clock += ms; },
         openBrowser: url => { assert.strictEqual(balanceCalls, 1); opened.push(url); events.push("open-payment"); },
@@ -254,7 +263,11 @@ async function capture(fn) {
       } else {
         assert.strictEqual(charged.code, 0, charged.err);
         assert.strictEqual(JSON.parse(charged.out).succeeded, 1);
-        assert.deepStrictEqual(opened, ["https://wink.cn/workspace?showPayment=1"]);
+        assert.strictEqual(opened.length, 1);
+        const entry = new URL(opened[0]);
+        assert.strictEqual(entry.origin, "https://wink.cn");
+        assert.strictEqual(entry.searchParams.get("source"), "workbuddy");
+        assert.strictEqual(entry.searchParams.get("trigger_task_id"), "rejected&task");
         assert.deepStrictEqual(events.slice(0, 8), ["config", "upload", "submit", "balance", "open-payment", "balance", "balance", "submit"]);
         assert.strictEqual(balanceCalls, 3);
         assert.strictEqual(rechargeSubmits, 2);
@@ -263,6 +276,16 @@ async function capture(fn) {
         assert.match(charged.err, /美豆已从 10 增加到 11/);
       }
       assert.strictEqual(events.filter(event => event === "upload").length, 1);
+      assert.strictEqual(tracked.filter(e => e.event === "credit_insufficient").length, 1);
+      const insufficient = tracked.find(e => e.event === "credit_insufficient");
+      assert.strictEqual(insufficient.task_id, "rejected&task");
+      assert.strictEqual(insufficient.required_credit, 6);
+      assert.strictEqual(insufficient.balance_credit, charged.code === 0 ? 10 : 0);
+      assert.ok(!tracked.some(e => e.event === "purchase_success" || e.event === "task_start"));
+      if (charged.code === 0) {
+        assert.strictEqual(tracked.find(e => e.event === "credit_insufficient").balance_credit, 10);
+        assert.strictEqual(tracked.filter(e => e.event === "task_submit").length, 1);
+      }
     }
     mode = "success";
 

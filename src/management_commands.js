@@ -70,7 +70,7 @@ function cmdStatus(argv) {
 }
 
 /** auth：打印授权链接（10 秒内）并保持运行，轮询换取 api_key 后落盘。 */
-async function cmdLogin(argv) {
+async function cmdLogin(argv, services = {}) {
   if (!nodeVersionOk()) {
     process.stderr.write(`错误：需要 Node.js ${MIN_NODE_MAJOR} 或以上，当前 ${process.version}\n`);
     return 1;
@@ -93,6 +93,11 @@ async function cmdLogin(argv) {
       const apiKey = responseOk(payload) && typeof data.api_key === "string" ? data.api_key : "";
       if (apiKey) {
         writeCredential(apiKey, baseUrl);
+        try {
+          const tracking = services.tracking || require("./tracking").createTracking({ client: client.withApiKey(apiKey) });
+          tracking.authSuccess(client.withApiKey(apiKey), data);
+          if (!services.tracking) tracking.firstRun();
+        } catch (_) { /* Analytics failure must not turn a successful login into a retry. */ }
         process.stdout.write(`${STATUS_TOKEN_CONNECTED}\nWink 云端处理：已连接\n`);
         return 0;
       }
@@ -180,7 +185,7 @@ const HELP = [
   "业务命令请使用 wink-cli：wink-cli picture_quality --level 2 --input <绝对路径>",
 ].join("\n");
 
-async function main(argv) {
+async function main(argv, services = {}) {
   const command = argv[0];
   const rest = argv.slice(1);
   if (["login", "auth", "status", "logout", "unauth", "unAuth", "doctor"].includes(command) &&
@@ -191,7 +196,7 @@ async function main(argv) {
   switch (command) {
     case "login":
     case "auth":
-      return cmdLogin(rest);
+      return cmdLogin(rest, services);
     case "status":
       return cmdStatus(rest);
     case "logout":

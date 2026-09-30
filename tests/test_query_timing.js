@@ -1,0 +1,31 @@
+"use strict";
+const assert = require('assert');
+const { WinkClient } = require('../src/wink_client');
+(async () => {
+  const client = new WinkClient({ log() {} });
+  client.submit = async () => ({ code: 0, data: { task_id: 'timing-test' } });
+  let queries = 0;
+  client.query = async () => {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    return { code: 0, data: { result: { error_code: ++queries === 1 ? 29901 : 0, url: 'https://example.test/private?token=secret' } } };
+  };
+  const trace = [];
+  const submits = [];
+  await client.run('https://example.test/input', { interval: 0.001, onQuery: row => trace.push(row), onSubmit: row => submits.push(row) });
+  assert.deepStrictEqual(submits.map(row => row.event), ["submit_start", "submit_response"]);
+  assert.strictEqual(submits[1].task_id, "timing-test");
+  assert.strictEqual(submits[1].accepted, true);
+  assert.ok(Date.parse(submits[1].at) <= Date.parse(trace[0].at));
+  assert.deepStrictEqual(trace.map(row => row.event), ['query_start', 'query_response', 'query_start', 'query_response', 'task_success']);
+  assert.deepStrictEqual(trace.filter(row => row.event === 'query_response').map(row => row.phase), ['running', 'finish']);
+  assert.ok(trace.every(row => row.task_id === 'timing-test' && Number.isFinite(Date.parse(row.at))));
+  assert.deepStrictEqual([trace[1].result_error_code, trace[3].result_error_code], [29901, 0]);
+  assert.ok(trace[1].duration_ms >= 10);
+  assert.ok(!JSON.stringify(trace).includes('secret'));
+  client.query = async () => { throw Object.assign(new Error('sensitive request'), { httpStatus: 503 }); };
+  await assert.rejects(client.run('https://example.test/input', { onQuery: row => trace.push(row) }));
+  assert.strictEqual(trace.at(-1).event, 'query_error');
+  assert.strictEqual(trace.at(-1).http_status, 503);
+  assert.ok(!JSON.stringify(trace).includes('sensitive'));
+  console.log('query timing: response phases, duration, failure and redaction passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -165,7 +165,7 @@ wink-cli picture_quality --level 2 --input "/absolute/path/photo.jpg" --json --p
 
 上传阶段 `message` 形如 `上传中 N%`，并带 `upload_percent`。云处理阶段显示“正在处理，预计还需 X 秒”，X 为 `Math.ceil(remaining_ms / 1000)`；`remaining_ms === null` 时显示“正在估算剩余时间”。任务仍在处理但预估归零时显示“已超过预计时间 N 秒，当前任务可能比较多，请您耐心等待”，N 为自预估归零起已等待的整秒数，只能依据 `completed` 判定完成。终端进度用人可读的文件名单行刷新；`--progress-json` 的 `file` 仍是完整路径。不要把剩余时间换算成真实处理百分比，不将 `elapsed_ms + remaining_ms` 当作固定预计总时长。启动/配置等发生在文件处理前的错误仍通过诊断文本和退出码报告，宿主必须处理非零退出及异常中断。
 
-启动业务命令、开始上传素材之前，同一批次先提示一次（不要等 `task_id`，也不要编造“任务提交成功”）。WorkBuddy 等 Agent 宿主不要依赖聊天／时间线实时刷进度（平台会折叠工具输出且无法改写气泡）；发提示后用一条命令跑完并等待结束，用户可到最近任务页查看进度。本地终端仍可用 `--progress-json` 或 `agent_run_progress.js` 看同行刷新：
+启动业务命令、开始上传素材之前，同一批次先提示一次（不要等 `task_id`，也不要编造“任务提交成功”）。WorkBuddy 宿主不要依赖聊天／时间线实时刷进度（平台会折叠工具输出且无法改写气泡）；发提示后用一条命令跑完并等待结束，用户可到最近任务页查看进度。本地终端仍可用 `--progress-json` 看同行刷新；`agent_run_progress.js` 输出纯文字进度行（`正在准备上传素材`，以及 `11.2s file.mp4 · 上传中 79%` / `168.3s file.mp4 · 正在处理，预计还需 262 秒`）。处理阶段按预估剩余时间 R 定频：间隔 = R/10，低于 10s 只显示 1 次，高于 50s 则按 50s 间隔（如 R=600s 约 12 次）。WorkBuddy 使用默认 `agent_run_progress.js` 按首次有效预估定频，并循环 `agent_watch_log.js --compact <日志> <上一条进度>`，把每条返回值作为下一次 Bash `description` 显示在时间线。不要用 `--until-done` / `--stream-progress` 代替可见标题更新。11 秒预估显示一次真实 ETA，600 秒按 50 秒间隔约 12 次；完成检查优先，不等待显示间隔，标题更新仍有模型轮次耗时。Cursor 等流式宿主可用 `agent_run_progress.js --live-progress <业务参数>` 展示每次真实上传百分比与剩余时间，或直接增量读取 CLI 的 `--progress-json` 输出；不要套用 WorkBuddy 的静默等待规则。
 
 > 批量任务、较长视频或较大文件通常需要更多处理时间。任务会在云端持续处理，你可以前往【[查看最近任务](https://wink.cn/editor/recent-task)】查看最新进度，或等待全部完成后通知你。
 
@@ -253,3 +253,17 @@ npm pack
 测试使用本地模拟接口，不投递真实云处理。npm 包包含源码、启动脚本和使用文档；`node_modules`、测试素材及历史处理结果不打入发布包。当前运行依赖仅 `image-size`，Node.js 仍需用户安装。
 
 兼容旧配置：`wink-connector` 暂时保留为管理命令的兼容入口，复用相同实现与凭据；新配置统一使用 `wink-cli`。
+
+
+## WorkBuddy 高清修复师 MVP 埋点
+
+WorkBuddy 来源的 `picture_quality`、登录和首次成功命令通过当前环境的 `POST /event/report` 上报，表单包含客户端公共参数和 JSON 字符串 `events`；不会请求文档中的 Mock 地址。来源由 `--channel-id workbuddy`、`WINK_TASK_CHANNEL_ID` 或宿主检测确定，其他来源不启用。`WINK_TELEMETRY=0` 关闭上报。
+
+- `cli_first_run`：首次成功执行受支持的 CLI 命令后上报。安装标识按本机用户持久化于 `~/.wink-mcp-server/tracking/installation-id`，升级保持；成功回执后按 API 环境去重，并发通过锁互斥，失败下次成功运行重试。帮助/版本命令也算成功运行；只读 `status/doctor/skill`、退出登录和其他专家不触发。
+- `auth_success`：仅在浏览器授权交换得到有效凭据时上报，使用缓存凭据不重复上报。仅采用响应中的 `data.user_id`，未知保持 null；本地用户关联按服务环境和凭据摘要隔离，不以凭据代替用户 ID。
+- `task_submit`：服务端接受提交并返回任务 ID 后上报。CLI 每个素材创建一个服务端任务，故每条 `file_count=1`；重试被拒的提交不算成功投递。`--tracking-prompt` 显式接收本次用户要求，基础脱敏链接、本地路径、邮箱、手机号、证件号和常见凭据后限制 2000 字符，缺少时 null。禁止传入素材内容或整段聊天历史。
+- `credit_insufficient`：提交明确返回美豆不足时上报；成功查询余额则携带实际余额。所需金额仅用响应 `data.required_credit`，任务 ID 仅用响应 `data.task_id/msg_id`，没有则 null。充值页透传 `source=workbuddy`，存在服务端任务 ID 时透传 `trigger_task_id`。
+
+所有事件带 ISO 8601 UTC `timestamp`、`source`、`installation_id`、`user_id`、`cli_version`、`expert_id=wink-quality-enhance`。`task_start` 与 `purchase_success` 必须由服务端开始处理状态/支付回调提供，当前不使用提交成功或余额增加代替；因此这两项看板指标尚不能依靠 CLI 统计。尚需联调确认用户 ID 字段、拒绝投递时的任务 ID/所需金额、支付页归因参数消费方式，以及文档 5.2 的最终字段规范。
+
+每次上报在独立后台进程执行，主进程不等待网络；后台有 3 秒总时限，失败不改变业务结果/退出码。凭据经匿名管道传递，不进入参数或埋点事件，不落盘新增副本。除首次运行外，事件采用尽力上报，不承诺失败重试或服务端恰好一次接收；不要将该链路当作计费账本。

@@ -72,7 +72,7 @@ const { isInsufficientBeans, createRechargeHandler, PAYMENT_URLS } = require("..
       submits++;
       if (submits === 1) {
         if (mode === "http") res.statusCode = 400;
-        res.end(JSON.stringify({ code: mode === "other" ? 7777 : 1999, message: "美豆不足，请充值" }));
+        res.end(JSON.stringify({ code: mode === "other" ? 7777 : 1999, message: "美豆不足，请充值", data: { task_id: "rejected-task", required_credit: 6, balance_credit: 0 } }));
       } else res.end(JSON.stringify({ code: 0, data: { msg_id: "fixture-task" } }));
     } else {
       queriesCount++;
@@ -81,7 +81,16 @@ const { isInsufficientBeans, createRechargeHandler, PAYMENT_URLS } = require("..
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const client = new WinkClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: "fixture-key", accessToken: "fixture-account-token", log: () => {} });
-  const options = { gnum: "900000008", version: "1.0 测试", onInsufficientBeans: async () => { callbacks++; return true; } };
+  const options = { gnum: "900000008", version: "1.0 测试", onInsufficientBeans: async rejection => {
+    callbacks++;
+    assert.deepStrictEqual(rejection.data, { task_id: "rejected-task", required_credit: 6, balance_credit: 0 });
+    if (mode === "http") {
+      assert.strictEqual(rejection.httpStatus, 400);
+      assert.strictEqual(rejection.extCode, 1999);
+      assert.ok(!JSON.stringify(rejection).includes("rejected-task"), "business data must not leak through error serialization");
+    }
+    return true;
+  } };
   try {
     assert.strictEqual((await client.remainAmountInfo(options)).data.total_amount, 20);
     assert.strictEqual(balances, 1);

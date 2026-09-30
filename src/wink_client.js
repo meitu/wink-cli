@@ -82,6 +82,9 @@ async function winkRequest(method, endpoint, query, options) {
     failure.httpStatus = error.httpStatus;
     failure.extCode = error.extCode;
     failure.endpoint = endpoint;
+    if (error.data && typeof error.data === "object" && !Array.isArray(error.data)) {
+      Object.defineProperty(failure, "data", { value: error.data });
+    }
     throw failure;
   }
   let payload;
@@ -275,6 +278,20 @@ class WinkClient {
     });
   }
 
+  /** Best-effort analytics transport. Callers must isolate it from task execution. */
+  async reportEvents(events, options = {}) {
+    if (!Array.isArray(events) || !events.length) throw new WinkError("events must be a non-empty array");
+    const form = new URLSearchParams(clientIdentityParams(options, taskDefaults(options)));
+    form.set("events", JSON.stringify(events));
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    const accessToken = options.accessToken || this.accessToken;
+    if (accessToken) headers["Access-Token"] = accessToken;
+    return this.request("POST", "/event/report", null, {
+      headers, body: Buffer.from(form.toString(), "utf8"), requireKey: false,
+      requestTimeout: options.requestTimeout ?? 2,
+    });
+  }
+
   /**
    * Fetch the AI feature config list（GET /task/ai_type_config，2026-09 接入）。
    * 时机：投递之前调用——取回云处理配置（支持的输入类型 content_type、视频时长
@@ -318,12 +335,25 @@ class WinkClient {
   async run(resourceUrl, options = {}) {
     if (!resourceUrl || typeof resourceUrl !== "string") throw new WinkError("resource_url is required");
     const interval = positiveNumber(options.interval, 1);
-    const timeout = positiveNumber(options.timeout, 600);
+    const timeout = positiveNumber(options.timeout, 3600);
     let submitted;
+    let submitAttempt = 0;
     while (true) {
+      const submitStarted = performance.now();
+      const submitStartedAt = new Date().toISOString();
+      submitAttempt += 1;
+      options.onSubmit?.({ event: "submit_start", at: submitStartedAt, attempt: submitAttempt });
       try {
         submitted = await this.submit(resourceUrl, options);
+        const submittedData = dataObject(submitted);
+        options.onSubmit?.({ event: "submit_response", at: new Date().toISOString(),
+          started_at: submitStartedAt, duration_ms: Math.round(performance.now() - submitStarted),
+          attempt: submitAttempt, code: submitted.code, accepted: responseOk(submitted),
+          task_id: submittedData.task_id || submittedData.msg_id || null });
       } catch (error) {
+        options.onSubmit?.({ event: "submit_error", at: new Date().toISOString(),
+          started_at: submitStartedAt, duration_ms: Math.round(performance.now() - submitStarted),
+          attempt: submitAttempt, http_status: error.httpStatus ?? null, error_code: error.extCode ?? null });
         // Retry only an explicit rejection by submit, never an ambiguous network failure.
         if (isInsufficientBeans(error) && options.onInsufficientBeans && await options.onInsufficientBeans(error)) continue;
         throw error;
@@ -339,10 +369,32 @@ class WinkClient {
     options.onProgress?.({ phase: "running", taskId, elapsedMs: 0, remainingMs: null });
     const deadline = Date.now() + timeout * 1000;
     while (true) {
-      const queried = await this.query(taskId, options);
-      if (!responseOk(queried)) return queried;
+      const queryStarted = performance.now();
+      const queryStartedAt = new Date().toISOString();
+      options.onQuery?.({ event: "query_start", task_id: taskId, at: queryStartedAt });
+      let queried;
+      try {
+        queried = await this.query(taskId, options);
+      } catch (error) {
+        options.onQuery?.({ event: "query_error", task_id: taskId, at: new Date().toISOString(),
+          duration_ms: Math.round(performance.now() - queryStarted),
+          http_status: error.httpStatus ?? null, error_code: error.extCode ?? null });
+        throw error;
+      }
       const taskData = dataObject(queried);
       const state = taskState(taskData, options);
+      // Diagnostics deliberately omit URLs, response bodies and credentials.
+      options.onQuery?.({ event: "query_response", task_id: taskId, at: new Date().toISOString(),
+        started_at: queryStartedAt, duration_ms: Math.round(performance.now() - queryStarted),
+        code: queried.code, phase: responseOk(queried) ? state.phase : "rejected",
+        status: taskData.status ?? null, error_code: state.error_code ?? null,
+        result_error_code: taskData.result?.error_code ?? null,
+        top_error_code: taskData.error_code ?? null });
+      if (!responseOk(queried)) return queried;
+      if (state.phase === "finish") {
+        options.onQuery?.({ event: "task_success", task_id: taskId, at: new Date().toISOString(),
+          elapsed_ms: Math.round(performance.now() - started) });
+      }
       const extra = [];
       if (state.status) extra.push(`status=${state.status}`);
       if (taskData.remaining_elapsed != null) extra.push(`remaining=${taskData.remaining_elapsed}`);

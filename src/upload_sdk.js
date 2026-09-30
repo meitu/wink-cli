@@ -29,6 +29,10 @@ class UploadError extends Error {
     this.errorCode = options.errorCode ?? -9;
     this.extCode = options.extCode ?? 0;
     this.httpStatus = options.httpStatus ?? 0;
+    if (options.data && typeof options.data === "object" && !Array.isArray(options.data)) {
+      // Preserve business fields for recovery without including them in ordinary error JSON.
+      Object.defineProperty(this, "data", { value: options.data });
+    }
     this.retryable = options.retryable ?? (
       this.extCode === 0 && this.httpStatus !== 614 &&
       !(this.httpStatus >= 400 && this.httpStatus <= 499)
@@ -71,7 +75,7 @@ function remoteError(body) {
     const rawCode = payload.err_code ?? payload.code ?? 0;
     const extCode = Number.isFinite(Number(rawCode)) ? Number(rawCode) : 0;
     const message = payload.err_msg ?? payload.error ?? payload.message ?? "";
-    return { extCode, message: String(message) };
+    return { extCode, message: String(message), data: payload.data };
   } catch (_) {
     return { extCode: 0, message: text.slice(0, 2000) };
   }
@@ -99,6 +103,7 @@ function request(method, rawUrl, options = {}) {
         reject(new UploadError(detail.message || `HTTP ${status}`, {
           extCode: detail.extCode,
           httpStatus: status,
+          data: detail.data,
         }));
       });
     });

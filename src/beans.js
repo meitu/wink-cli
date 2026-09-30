@@ -14,10 +14,10 @@ function isInsufficientBeans(value) {
 }
 
 /** One recharge deadline per file, including repeated submit rejections. */
-function createRechargeHandler({ client, env, openBrowser, report, now = Date.now,
+function createRechargeHandler({ client, env, openBrowser, report, attribution, onInsufficient, now = Date.now,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let deadline, opened = false;
-  const url = PAYMENT_URLS[env];
+  let url = PAYMENT_URLS[env];
   function timedOut(lastError) {
     return new Error(`等待美豆充值超时（300 秒）${lastError ? `；最后查询错误：${lastError}` : ""}。充值后请重新运行；充值链接 ${url}`);
   }
@@ -36,7 +36,16 @@ function createRechargeHandler({ client, env, openBrowser, report, now = Date.no
     return amount;
   }
   return async rejection => {
+    const notify = balance => { try { onInsufficient?.(rejection, balance); } catch (_) {} };
+    if (!url) notify(null);
     if (!url) throw new Error("美豆不足：自定义接口未配置充值环境，请充值后重新运行");
+    if (attribution && !opened) {
+      const entry = new URL(PAYMENT_URLS[env]);
+      entry.searchParams.set("source", attribution.source);
+      const taskId = rejection?.data?.task_id || rejection?.data?.msg_id;
+      if (taskId) entry.searchParams.set("trigger_task_id", String(taskId));
+      url = entry.toString();
+    }
     if (deadline === undefined) deadline = now() + TIMEOUT_MS;
     if (now() >= deadline) throw timedOut();
     // A new explicit submit rejection gets a new baseline. Reusing the original
@@ -45,6 +54,7 @@ function createRechargeHandler({ client, env, openBrowser, report, now = Date.no
     try {
       baseline = await readAmount();
     } catch (error) {
+      notify(null);
       const original = rejection?.message || "美豆不足";
       const code = rejection?.code ?? rejection?.extCode;
       const failure = new Error(`${original}${rejection?.code != null ? `（code=${code}）` : ""}；无法获取充值前余额，未启动充值轮询：${error.message}。可手动充值后重新运行；充值链接 ${url}`);
@@ -52,6 +62,7 @@ function createRechargeHandler({ client, env, openBrowser, report, now = Date.no
       failure.cause = error;
       throw failure;
     }
+    notify(baseline);
     report(`美豆不足，已记录当前美豆 ${baseline}，请在浏览器购买美豆；充值链接 ${url}`);
     if (!opened) {
       openBrowser(url);

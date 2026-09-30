@@ -24,6 +24,7 @@ const { imageSize } = require("image-size");
 const { readMp4Metadata } = require("./mp4_metadata");
 const { createFileProgress } = require("./cli_progress");
 const { createRechargeHandler } = require("./beans");
+const { createTracking } = require("./tracking");
 const { fetchBeautyStyles, selectBeautyStyle, buildBeautySubmission, formatBeautyStyles } = require("./ai_beauty");
 const {
   WinkClient,
@@ -40,7 +41,7 @@ const { ENVIRONMENTS, DEFAULT_ENV, CREDENTIAL_DIR, credentialFile } = require(".
 const DEFAULT_LEVEL = 2; // 与参考实现一致：2 = 超清（默认）
 const LOGIN_TIMEOUT_SECONDS = 300;
 const POLL_INTERVAL_SECONDS = 1;
-const POLL_TIMEOUT_SECONDS = 600;
+const POLL_TIMEOUT_SECONDS = 3600;
 
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff", "avif"]);
 const VIDEO_EXTS = new Set(["mp4", "mov", "m4v", "avi", "mkv", "webm", "flv", "wmv", "3gp", "mpeg", "mpg", "ts"]);
@@ -144,6 +145,7 @@ function toolHelp(command) {
     "  --json                       以 JSON 输出结果汇总（进度信息走 stderr）",
     "  --progress-json              stderr 输出逐行 JSON 进度事件（其他诊断仍为文本）",
     "  --channel-id <id>            投递渠道 client_channel_id；默认按 Agent 环境推断（workbuddy/cursor/claude/codex/cli）",
+    "  --tracking-prompt <text>      WorkBuddy 画质修复埋点提示词（可选，基础脱敏后上报）",
     "  --client-model <name>        机型 client_model；默认自动采集（如 Apple M4 / Windows CPU / 安卓机型名）",
     "  -h, --help                   显示本帮助",
     "",
@@ -377,6 +379,7 @@ async function ensureApiKey(client, flags, hooks = {}) {
       const key = r && r.code === 0 && r.data && r.data.api_key;
       if (typeof key === "string" && key) {
         (hooks.writeCredential || writeCredential)(key, client.baseUrl);
+        hooks.onAuthSuccess?.(key, r.data);
         progress("授权成功，登录凭据已保存");
         return key;
       }
@@ -496,12 +499,18 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
   const client = (services.createClient || ((options) => new WinkClient(options)))({ baseUrl, log: (line) => progress(`        ${line}`) });
   let apiKey;
   try {
-    apiKey = await ensureApiKey(client, flags, services.auth);
+    apiKey = await ensureApiKey(client, flags, { ...services.auth,
+      onAuthSuccess: (key, data) => {
+        services.tracking?.authSuccess(client.withApiKey(key), data);
+        services.auth?.onAuthSuccess?.(key, data);
+      },
+    });
   } catch (error) {
     progress(`错误: ${error.message}`);
     return 1;
   }
   const authed = client.withApiKey(apiKey);
+  services.tracking?.bind(authed);
 
   let beautyStyle;
   let beautyStyles;
@@ -598,6 +607,12 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
       const waitForRecharge = createRechargeHandler({
         client: authed,
         env,
+        attribution: services.tracking?.enabled ? { source: "workbuddy" } : undefined,
+        onInsufficient: (rejection, balance) => {
+          const rejected = dataObject(rejection);
+          services.tracking?.emit("credit_insufficient", { task_id: rejected.task_id || rejected.msg_id || null,
+            required_credit: rejected.required_credit, balance_credit: balance ?? rejected.balance_credit });
+        },
         openBrowser: services.recharge?.openBrowser || openBrowser,
         report: detail => fileProgress.recharge(detail),
         now: services.recharge?.now,
@@ -626,6 +641,16 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
           await waitForRecharge(rejection);
           fileProgress.processing();
           return true;
+        },
+        ...(optionFlag(flags, "progress-json") ? {
+          onQuery: detail => progress(JSON.stringify({ type: "diagnostic", file, ...detail })),
+        } : {}),
+        onSubmit: detail => {
+          if (optionFlag(flags, "progress-json")) progress(JSON.stringify({ type: "diagnostic", file, ...detail }));
+          if (detail.event === "submit_response" && detail.accepted && detail.task_id) {
+            services.tracking?.emit("task_submit", { task_id: detail.task_id,
+              prompt: optionValue(flags, "tracking-prompt"), media_type: contentType === "2" ? "video" : "image", file_count: 1 });
+          }
         },
         onProgress: ({ phase, remainingMs, elapsedMs, taskId: currentTaskId }) => {
           taskId = currentTaskId || taskId;
@@ -691,7 +716,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
 
 // ---------------------------------------------------------------- 主流程
 
-async function main(argv, services = {}) {
+async function execute(argv, services = {}) {
   const { _, flags } = parseArgv(argv);
   let environment;
   try {
@@ -717,7 +742,7 @@ async function main(argv, services = {}) {
       args.push(rest[i]);
     }
     if (command !== "skill" && command !== "version") args.push(`--base-url=${environment.baseUrl}`);
-    return require("./management_commands").main([command, ...args]);
+    return require("./management_commands").main([command, ...args], { tracking: services.tracking });
   }
   if (command === "install") {
     const { INSTALL_HELP, installCli } = require("./install");
@@ -743,6 +768,24 @@ async function main(argv, services = {}) {
   progress("");
   printHelp(MAIN_HELP);
   return 1;
+}
+
+// Keep read-only status/doctor/skill and unrelated experts free of MVP tracking.
+async function main(argv, services = {}) {
+  const { _, flags } = parseArgv(argv);
+  const eligible = !_[0] || ["help", "version", "login", "auth", "picture_quality"].includes(_[0]);
+  let tracking = services.tracking;
+  if (!tracking && eligible && !services.createClient) {
+    try {
+      const { baseUrl } = resolveEnvironment(flags);
+      tracking = createTracking({ client: new WinkClient({ baseUrl,
+        apiKey: optionValue(flags, "api-key") || process.env.WINK_CLI_API_KEY || readCredential(baseUrl) }),
+        source: optionValue(flags, "channel-id") });
+    } catch (_) { /* Optional analytics cannot block CLI startup. */ }
+  }
+  const code = await execute(argv, { ...services, tracking });
+  if (code === 0 && eligible) tracking?.firstRun();
+  return code;
 }
 
 if (require.main === module) {

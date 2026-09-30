@@ -117,17 +117,28 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 - 加 `--json` 后，结构化汇总走 stdout，过程日志走 stderr。
 - 投递渠道 `client_channel_id` 由 CLI 按 Agent 环境自动推断（WorkBuddy 专家 / Skill → `workbuddy`；Cursor / Claude / Codex → 对应值；普通终端 → `cli`）。一般不必手写；仅在排障或明确要求时用 `--channel-id` 或环境变量 `WINK_TASK_CHANNEL_ID` 覆盖。
 - 机型 `client_model` 仅在投递时由 CLI 自动采集并携带（如 macOS `Apple M4`）；列表/查询等接口不传。一般不必手写，可用 `--client-model` 或 `WINK_TASK_CLIENT_MODEL` 覆盖。
-- WorkBuddy 里**不要追求聊天／时间线的实时进度刷屏**：平台会把长命令放后台、折叠工具输出，也无法原地改写聊天气泡；sleep 轮询、TaskUpdate、`\\r` 同行刷新、HTML 预览都无法稳定做到「一行进度」。
-- WorkBuddy 推荐流程：
-  1. **素材上传之前**先发下面提示一次（“查看最近任务”必须是可点击超链接）；
-  2. 用**一条**业务命令跑完（`wink-cli <命令> ... --json --progress-json`，或 `node "<meitu-wink-cli>/src/agent_run_progress.js" <参数...>`）；
-  3. 等待该命令结束，再按 stdout 最终 JSON 交付；
-  4. 聊天不要连续发 `上传中 N%`／`预计还需 X 秒`，也不要为进度反复 TaskUpdate／sleep 读日志。
+- **Cursor 进度展示**：直接运行 `wink-cli <命令> ... --json --progress-json`，保留命令会话并增量读取 stderr。也可用 `node "<meitu-wink-cli>/src/agent_run_progress.js" --live-progress <命令> <参数...>` 将进度转为纯文字。上传展示实际 `upload_percent`；处理展示实际 `message`（如“正在处理，预计还需 62 秒”）；阶段切换或数值明显变化时更新用户可见进度，不每秒刷聊天。不要套用 WorkBuddy 的 `--until-done` 静默等待，也不要将两路输出全部重定向后只看最终结果。只读取 `type=progress` 作为进度，`type=diagnostic` 为排障日志。成功后立即交付，不自行倒计时或猜测正在加水印。
+- **宿主判定**：以下 WorkBuddy 专用规则只在 WorkBuddy 内使用；CLI 位于 `.workbuddy` 安装目录不代表当前宿主就是 WorkBuddy。
+- **WorkBuddy 可见文字进度与结果交付（必做）**：这里的文字进度是时间线上的 Bash `description`，不是等待工具内被折叠的 stdout。每条到期进度通过下一次等待调用的标题展示，不用代码块、固定 sleep 或 TaskUpdate。
+  1. 上传前提示后，用 Bash `run_in_background: true` 启动默认进度包装脚本，`description` 仅一次设为 `正在准备上传素材`。本轮先确定一个唯一日志绝对路径，后续调用沿用同一路径，不能依赖跨 Bash 共享变量：
+     ```bash
+     node "$HOME/.workbuddy/binaries/node/cli-connector-packages/lib/node_modules/meitu-wink-cli/src/agent_run_progress.js" --log "<本次日志绝对路径>" <命令> <业务参数...>
+     ```
+     `--log` 自动创建父目录并统一写入日志和 `<日志路径>.stdout`，不要再加 shell 重定向；每次使用未使用过的新日志路径，已有路径会拒绝启动。启动失败时先检查原后台任务，不继续空等 watch，也不自动重投。不用 `--live-progress`，不要 shell `&`。上传按实际百分比跨 20% 档位输出，100% 上传成功后单独输出。
+  2. 立即前台调用普通 watch，Bash `timeout: 3900000`（须覆盖 CLI 单任务默认轮询 3600 秒，并留约 5 分钟余量），首次 `description` 为 `正在上传素材`：
+     ```bash
+     node "$HOME/.workbuddy/binaries/node/cli-connector-packages/lib/node_modules/meitu-wink-cli/src/agent_watch_log.js" --compact "<本次日志绝对路径>" "<上一条完整进度，首次为空字符串>"
+     ```
+     WorkBuddy 不使用 `--until-done` 或 `--stream-progress` 来替代这个循环，它们不会更新截图中的可见标题。普通 watch 在下一条已节流进度或完整结果出现时才返回，内部每 100ms 检查结果，没有固定睡眠等待。
+  3. 若返回普通进度行，立即再调用同一 watch，将该行完整传作上一条进度，同时将 Bash `description` 设为该行，例如 `11.2s clip.mp4 · 上传中 79%` 或 `50.0s clip.mp4 · 正在处理，预计还需 550 秒`。不要只在聊天里解释，也不要额外读目录、JSON 或记忆。每次只展示最新状态，不回放漏过的旧进度；快速任务可能跳过部分中间百分比。若宿主将单次等待转后台，继续读取其原任务句柄，禁止重复投递。
+  4. 处理频次由脚本按每个文件的首次有效剩余预估 R 秒固定：R/10 < 10 秒时只显示一次真实剩余秒数；10 ≤ R/10 ≤ 50 时按 R/10 秒间隔；R/10 > 50 时按 50 秒间隔。预估 11 秒显示 1 次，200 秒约 10 次，600 秒约 12 次。首次预估立即显示并计入次数；未知预估只显示“正在估算剩余时间”，收到有效预估再定频。实际提前完成就提前结束；进入“已超过预计时间”后按 50 秒间隔继续刷新标题，仍持续等待直至 `__DONE__`；不编造倒计时、处理百分比或加水印阶段。标题更新还受宿主模型耗时影响，不承诺精确条数。
+  5. 返回 `__DONE__` 表示整批结束：立即把 `__DELIVER__` 到 `__END_DELIVER__` 中的 Markdown 原样回复，保留失败项，不先写记忆、重读 `--json` stdout 或调用文件展示。compact 模式不附带 `__JSON__`，交付以 `__DELIVER__` 为准。成功检查优先于进度，完成不等待 10–50 秒的显示间隔。返回 `__ERROR__` 时如实报告并核查原任务，不自动重新收费投递。见到充值提示按原充值规则及时告知。模型在两次工具调用间仍会有耗时，这与服务端处理耗时分开衡量。
+- **`--list-styles` 等查询命令例外**：`ai_beauty --list-styles`（以及 `doctor`、`--help` 等不上传、不投递的查询）直接前台运行 `wink-cli ... --json`，不要套 `agent_run_progress.js` / `agent_watch_log.js`；其 stdout 是 `{ styles }` 等查询结构，不是带 `total`/`results[]` 的批处理汇总，走 watch 会被误判为 `__ERROR__`。仅真正投递云处理任务时才用进度包装与 watch 循环。
 - **素材上传之前**提示文案（同一批次只一次；不要等 `task_id` 或上传中再发；不要编造“任务提交成功”）：
 
   批量任务、较长视频或较大文件通常需要更多处理时间。任务会在云端持续处理，你可以前往【[查看最近任务](https://wink.cn/editor/recent-task)】查看最新进度，或等待全部完成后通知你。
 
-- 本地终端（非 WorkBuddy）仍可用 `--progress-json` 或 `agent_run_progress.js` 看同行进度；那是终端能力，不要当成 WorkBuddy 聊天 UI 承诺。
+- 本地终端仍可用 `--progress-json` 看同行进度；WorkBuddy 必须走 `agent_run_progress.js`，并用 `run_in_background: true`（不要 shell `&`）。
 - 进度事件字段：`file`、`phase`（`uploading` / `processing` / `waiting_recharge` / `completed` / `failed`）、`task_id`、`elapsed_ms`、`remaining_ms`、`upload_percent`、`result_url`、`message`。上传 `message` 形如 `上传中 N%`；处理为“正在处理，预计还需 X 秒”／“正在估算剩余时间”／“已超过预计时间 N 秒，当前任务可能比较多，请您耐心等待”。
 - 收到 `waiting_recharge` 时立即按充值规则在聊天提示；只在最终成功时交付。检查退出码和最终汇总。
 - 发出上传前提示后继续等待原命令结束再汇总；不要发完提示就结束等待，不重复投递。进程中断或超时时如实说明并提供最近任务链接。
@@ -265,3 +276,7 @@ wink-cli picture_quality --help
 - 执行业务命令时保留持续进程／会话句柄，启动后及时读取 stdout 和 stderr，此后用短等待增量读取。禁止 `| tail`、等待 EOF 的输出捕获或一次阻塞到整个任务结束，避免隐藏充值提示。后台执行时及时读取该进程的日志，不等命令退出才读；`--json` 的最终 stdout 可能尚未输出，应同时读取 stderr。
 - 显示提示后继续等待原 CLI 进程，每 5 秒的余额查询和最长 300 秒等待由 CLI 负责；不要另开余额轮询、重启命令、重复投递或要求用户回复“已充值”才能继续。无需每 5 秒重复发送购买文案；余额增加仅代表可重试，不保证足够，最终提交是否成功以服务端为准。再次不足时沿用 CLI 的剩余等待时间。
 - 基准余额获取失败、进程退出或等待超时时，按实际日志说明当前阶段，提供真实购买链接，但不再说“正在等待／充值后自动继续”。已有 task_id 时保留供核查；只有真实成功且有有效结果链接才交付“查看优化后素材”。此规则不放宽专家能力边界，也不允许尚未接入的能力发起任务。
+
+### WorkBuddy 画质修复埋点
+
+仅在 WorkBuddy 执行 `picture_quality` 时，业务参数同时带 `--channel-id workbuddy --tracking-prompt <本次用户处理要求>`。提示词只取本次任务要求，先剔除凭据、联系方式、素材路径和链接；以当前 shell 的安全参数引用方式传入，不拼接成可执行脚本，不附带历史对话或素材内容。CLI 会再次基础脱敏，通过后台进程上报。没有可用任务要求时省略该参数，不编造提示词。其他宿主或其他专家不标记为 WorkBuddy 高清修复师。无需额外调用埋点接口，也不要等待埋点后才交付结果。`WINK_TELEMETRY=0` 可关闭此 MVP 埋点。

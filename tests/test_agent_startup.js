@@ -1,0 +1,37 @@
+"use strict";
+const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { spawnSync } = require("child_process");
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wink-startup-"));
+const runner = path.join(dir, "runner.js");
+const watcher = path.resolve(__dirname, "../src/agent_watch_log.js");
+const summary = { ok: true, total: 1, succeeded: 1, failed: 0, results: [{ ok: true, file: "photo.jpg", result_url: "https://example.test/result.jpg" }] };
+const run = (file, args) => spawnSync(process.execPath, [file, ...args], { encoding: "utf8", timeout: 15000 });
+try {
+  fs.copyFileSync(path.resolve(__dirname, "../src/agent_run_progress.js"), runner);
+  fs.writeFileSync(path.join(dir, "cli.js"), `process.stdout.write(${JSON.stringify(JSON.stringify(summary))});`);
+  const log = path.join(dir, "missing", "nested", "task.log");
+  const started = run(runner, ["--log", log, "color_enhance"]);
+  assert.strictEqual(started.status, 0, started.stderr);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(log + ".stdout", "utf8")), summary);
+  assert.match(fs.readFileSync(log, "utf8"), /__RUNNER_EXIT__/);
+  const delivered = run(watcher, ["--compact", log]);
+  assert.strictEqual(delivered.status, 0, delivered.stdout);
+  assert.match(delivered.stdout, /__DONE__/);
+  const repeat = run(runner, ["--log", log, "color_enhance"]);
+  assert.strictEqual(repeat.status, 2, "do not overwrite/re-submit an existing task");
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(log + ".stdout", "utf8")), summary);
+  fs.renameSync(log + ".stdout", path.join(dir, "custom.stdout"));
+  const mismatched = run(watcher, ["--compact", log]);
+  assert.strictEqual(mismatched.status, 1);
+  assert.ok(mismatched.stdout.includes(log + ".stdout"));
+  const explicit = run(watcher, ["--compact", "--stdout", path.join(dir, "custom.stdout"), log]);
+  assert.strictEqual(explicit.status, 0);
+  assert.match(explicit.stdout, /__DONE__/);
+  const missing = run(watcher, ["--compact", path.join(dir, "absent", "task.log")]);
+  assert.strictEqual(missing.status, 1, missing.stderr);
+  assert.match(missing.stdout, /10 秒仍未找到有效日志/);
+  console.log("agent startup: missing directory, exclusive logs, result path and bounded startup wait passed");
+} finally { fs.rmSync(dir, { recursive: true, force: true }); }
