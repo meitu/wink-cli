@@ -269,7 +269,7 @@ WorkBuddy 来源的所有云处理功能、登录和首次成功命令通过当�
 - `cloud_process_success` / `cloud_process_fail`：投递成功后，查询得到可交付结果或处理链路失败（含查询异常、超时）时上报；`msg_id` 使用服务端任务号，`task_id` 仍是 CLI 本地 UUID。上传或投递失败不会额外上报处理失败。
 - `credit_insufficient`：每次提交明确返回美豆不足时上报，携带同一文件的本地 `task_id` 和 `group_id`；成功查询余额则携带实际余额，所需金额仅用响应 `data.required_credit`。充值入口的 `trigger_task_id` 使用此本地任务 ID，当前充值页渠道参数仍为 `source=workbuddy`。
 
-每个事件的自定义参数统一放在 `params` 对象中（无自定义参数时为 `{}`），公共字段仍在事件外层。`cloud_upload_fail` 和 `cloud_submit_fail` 的 `params` 包含 `error_code`、`error_message`；优先使用服务端错误码，其次网络错误码/HTTP 状态，未知为 null。错误消息进行基础脱敏。投递响应成功但缺少任务号使用 `INVALID_TASK_ID`。
+事件名称使用 `event_id` 字段（不再发送 `event`）。每个事件的自定义参数统一放在 `params` 对象中（无自定义参数时为 `{}`），公共字段仍在事件外层。`cloud_upload_fail` 和 `cloud_submit_fail` 的 `params` 包含 `error_code`、`error_message`；优先使用服务端错误码，其次网络错误码/HTTP 状态，未知为 null。错误消息进行基础脱敏。投递响应成功但缺少任务号使用 `INVALID_TASK_ID`。
 
 上述 10 个 `cloud_*` 事件均携带 `cloud_type`（CLI 功能名，如 `picture_quality`）、`level`（实际生效的整数档位，含默认值）、`level_name`（档位名称，如 `超清`）。单档功能沿用配置中的档位 1；`--strength`、`--sr-mode`、风格等独立参数不作为 `level`。
 

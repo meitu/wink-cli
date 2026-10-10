@@ -132,7 +132,7 @@ function createTracking({ client, source, expertId, env = process.env, homeDir =
       try {
         if (!Object.hasOwn(FIELDS, event)) return;
         const time = Date.now();
-        const record = { event,
+        const record = { event_id: event,
           gid, uid: userId, channel: source, time, carrier, network, model, ...operatingSystem,
           app_version: VERSION, cli_version: VERSION, expert_id: resolvedExpertId, params: {} };
         for (const key of FIELDS[event]) {
