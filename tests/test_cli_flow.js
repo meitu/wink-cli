@@ -36,6 +36,7 @@ async function capture(fn) {
     // A relogin must ignore cached/environment keys and only exchange its own once_code.
     process.env.WINK_CLI_API_KEY = "old-test-key";
     let exchanged = 0, stored, opened;
+    const authEvents = [];
     const auth = await capture(() => ensureApiKey({
       authUrl: () => ({ auth_url: "https://example.invalid/auth", once_code: "bound-code" }),
       exchange: async (code) => {
@@ -43,11 +44,15 @@ async function capture(fn) {
         return ++exchanged === 1 ? { code: 20001 } : { code: 0, data: { api_key: "new-test-key" } };
       },
     }, { relogin: true }, {
+      onAuthStart: () => authEvents.push("start"),
+      onAuthSuccess: () => authEvents.push("success"),
+      onAuthFailed: () => authEvents.push("failed"),
       openBrowser: (url) => { opened = url; },
       readCredential: () => { throw new Error("relogin must not read cache"); },
       writeCredential: (key) => { stored = key; }, sleep: async () => {},
     }));
     assert.strictEqual(auth.code, "new-test-key");
+    assert.deepStrictEqual(authEvents, ["start", "success"]);
     assert.strictEqual(stored, auth.code);
     assert.ok(opened);
     assert.ok(!auth.err.includes("new-test-key"));
@@ -56,6 +61,7 @@ async function capture(fn) {
 
     // Preserve the beta failure that used to disappear inside the polling catch.
     let loginTime = 0, loginAttempts = 0;
+    const authFailures = [];
     const pendingMessage = "GET /init/exchange：api key不存在或once code已过期（HTTP 400，code=20001）";
     const loginTimeout = await capture(async () => {
       try {
@@ -64,6 +70,8 @@ async function capture(fn) {
           authUrl: () => ({ auth_url: "https://example.invalid/auth", once_code: "own-code" }),
           exchange: async code => { assert.strictEqual(code, "own-code"); loginAttempts++; throw new Error(pendingMessage); },
         }, { relogin: true }, {
+          onAuthStart: () => authFailures.push("start"),
+          onAuthFailed: fields => authFailures.push(fields),
           openBrowser: () => {}, now: () => loginTime,
           sleep: async () => { loginTime += 150000; },
           writeCredential: () => { throw new Error("must not cache a failed login"); },
@@ -72,6 +80,9 @@ async function capture(fn) {
       } catch (error) { return error.message; }
     });
     assert.strictEqual(loginAttempts, 2);
+    assert.strictEqual(authFailures.length, 2);
+    assert.strictEqual(authFailures[1].error_code, -1);
+    assert.match(authFailures[1].error_message, /授权超时/);
     assert.strictEqual(loginTimeout.err.split("授权状态:").length - 1, 1, "unchanged authorization status must not spam output");
     assert.match(loginTimeout.code, /SSO 授权超时.*betacliapi-winkcut.*最后响应:.*HTTP 400.*code=20001/);
 
@@ -176,6 +187,7 @@ async function capture(fn) {
           // The SDK's upload transport has separate end-to-end coverage.
           authed.uploadFile = async (file, options) => {
             events.push("upload");
+            if (mode === "upload-failure") throw new Error("upload unavailable");
             assert.ok(events.includes("config"));
             options.onProgress(0.0797);
             options.onProgress(0.0797);
@@ -193,9 +205,27 @@ async function capture(fn) {
     const mixed = await capture(() => main(args(inputDir + "," + photo), services));
     assert.strictEqual(mixed.code, 0, mixed.err);
     const summary = JSON.parse(mixed.out);
-    assert.strictEqual(tracked.length, 2);
-    assert.ok(tracked.every(e => e.event === "task_submit" && e.task_id && e.file_count === 1));
-    assert.deepStrictEqual(tracked.map(e => e.media_type).sort(), ["image", "video"]);
+    assert.strictEqual(tracked.length, 12);
+    const group = tracked[0];
+    assert.strictEqual(group.event, "cloud_group_process_start");
+    assert.strictEqual(group.file_count, 2);
+    assert.match(group.group_id, /^[0-9a-f-]{36}$/);
+    assert.ok(tracked.every(e => e.group_id === group.group_id));
+    assert.strictEqual(tracked.at(-1).event, "cloud_group_process_finish");
+    const uploads = tracked.filter(e => e.event === "cloud_upload_start");
+    assert.deepStrictEqual(uploads.map(e => e.media_type).sort(), [1, 2]);
+    assert.strictEqual(new Set(uploads.map(e => e.task_id)).size, 2);
+    for (const upload of uploads) {
+      assert.match(upload.task_id, /^[0-9a-f-]{36}$/);
+      assert.strictEqual(upload.file_size, 123);
+      assert.ok([photo, video].includes(upload.file_path));
+      assert.strictEqual(upload.duration, upload.media_type === 2 ? 9443 : 0);
+      const chain = tracked.filter(e => e.task_id === upload.task_id);
+      assert.deepStrictEqual(chain.map(e => e.event), ["cloud_upload_start", "cloud_upload_success",
+        "cloud_submit_start", "cloud_submit_success", "cloud_process_success"]);
+      assert.match(chain.at(-1).msg_id, /^task-/);
+      assert.notStrictEqual(chain.at(-1).msg_id, upload.task_id);
+    }
 
     assert.strictEqual(summary.total, 2, "directory and explicit file deduplicate");
     assert.strictEqual(summary.succeeded, 2);
@@ -267,7 +297,7 @@ async function capture(fn) {
         const entry = new URL(opened[0]);
         assert.strictEqual(entry.origin, "https://wink.cn");
         assert.strictEqual(entry.searchParams.get("source"), "workbuddy");
-        assert.strictEqual(entry.searchParams.get("trigger_task_id"), "rejected&task");
+        assert.strictEqual(entry.searchParams.get("trigger_task_id"), tracked.find(e => e.event === "credit_insufficient").task_id);
         assert.deepStrictEqual(events.slice(0, 8), ["config", "upload", "submit", "balance", "open-payment", "balance", "balance", "submit"]);
         assert.strictEqual(balanceCalls, 3);
         assert.strictEqual(rechargeSubmits, 2);
@@ -278,13 +308,18 @@ async function capture(fn) {
       assert.strictEqual(events.filter(event => event === "upload").length, 1);
       assert.strictEqual(tracked.filter(e => e.event === "credit_insufficient").length, 1);
       const insufficient = tracked.find(e => e.event === "credit_insufficient");
-      assert.strictEqual(insufficient.task_id, "rejected&task");
+      assert.strictEqual(insufficient.task_id, tracked.find(e => e.event === "cloud_upload_start").task_id);
+      assert.strictEqual(insufficient.group_id, tracked[0].group_id);
+      assert.strictEqual(tracked.filter(e => e.event === "cloud_submit_fail").length, 1);
+      assert.strictEqual(tracked.at(-1).event, "cloud_group_process_finish");
       assert.strictEqual(insufficient.required_credit, 6);
       assert.strictEqual(insufficient.balance_credit, charged.code === 0 ? 10 : 0);
-      assert.ok(!tracked.some(e => e.event === "purchase_success" || e.event === "task_start"));
+      assert.ok(!tracked.some(e => e.event === "purchase_success" || e.event === "task_start" || e.event === "task_submit"));
       if (charged.code === 0) {
         assert.strictEqual(tracked.find(e => e.event === "credit_insufficient").balance_credit, 10);
-        assert.strictEqual(tracked.filter(e => e.event === "task_submit").length, 1);
+        assert.strictEqual(tracked.filter(e => e.event === "cloud_submit_success").length, 1);
+        assert.strictEqual(tracked.filter(e => e.event === "cloud_submit_start").length, 2);
+        assert.strictEqual(new Set(tracked.filter(e => e.task_id).map(e => e.task_id)).size, 1);
       }
     }
     mode = "success";
@@ -360,13 +395,28 @@ async function capture(fn) {
       for (const item of result.results) assert.ok(item.result_url.startsWith(base));
     }
 
+    tracked.length = 0; mode = "upload-failure";
+    const uploadFailure = await capture(() => main(args(inputDir), services));
+    assert.strictEqual(uploadFailure.code, 3);
+    assert.strictEqual(tracked.find(e => e.event === "cloud_upload_fail").error_message, "upload unavailable");
+    assert.deepStrictEqual(tracked.map(e => e.event), ["cloud_group_process_start",
+      "cloud_upload_start", "cloud_upload_fail", "cloud_upload_start", "cloud_upload_fail", "cloud_group_process_finish"]);
+    assert.strictEqual(new Set(tracked.map(e => e.group_id)).size, 1);
+    assert.strictEqual(new Set(tracked.filter(e => e.task_id).map(e => e.task_id)).size, 2);
+
+    tracked.length = 0;
     events = []; mode = "http-parameter-failure";
     const parameterFailure = await capture(() => main(args(video), services));
     assert.strictEqual(parameterFailure.code, 3);
+    assert.strictEqual(tracked.find(e => e.event === "cloud_submit_fail").error_code, 10101);
+    assert.match(tracked.find(e => e.event === "cloud_submit_fail").error_message, /参数错误/);
     assert.match(parameterFailure.err, /POST \/task\/submit.*参数错误.*HTTP 400.*code=10101/);
     assert.ok(!events.includes("query"), "rejected submit must not poll");
     assert.ok(!parameterFailure.err.includes("test-key"), "errors must not expose credentials");
 
+    assert.deepStrictEqual(tracked.map(e => e.event), ["cloud_group_process_start", "cloud_upload_start",
+      "cloud_upload_success", "cloud_submit_start", "cloud_submit_fail", "cloud_group_process_finish"]);
+    tracked.length = 0;
     events = []; mode = "algorithm-failure";
     const algorithmFailure = await capture(() => main([...args(video), "--progress-json"], services));
     assert.strictEqual(algorithmFailure.code, 3);
@@ -380,6 +430,9 @@ async function capture(fn) {
     assert.strictEqual(failureEvents.at(-1).remaining_ms, null);
     assert.ok(!failureEvents.some(event => event.phase === "completed"));
     assert.ok(!events.includes("download"));
+    assert.deepStrictEqual(tracked.map(e => e.event), ["cloud_group_process_start", "cloud_upload_start",
+      "cloud_upload_success", "cloud_submit_start", "cloud_submit_success", "cloud_process_fail", "cloud_group_process_finish"]);
+    assert.strictEqual(tracked.find(e => e.event === "cloud_process_fail").msg_id, failedResult.task_id);
     queryCount = 0;
 
     events = []; mode = "download-failure";

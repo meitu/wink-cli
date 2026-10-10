@@ -7,6 +7,8 @@ const { credentialFile, ENVIRONMENTS, DEFAULT_ENV } = require("./runtime_config"
 const { cmdSkill } = require("./connector_skill");
 const { openBrowser } = require("./open_browser");
 
+const { writeUid, identityFile } = require("./user_identity");
+
 const VERSION = require("../package.json").version;
 
 // 对外连接器默认使用正式环境（release），与 wink-cli 业务命令的 --env 默认值保持一致，
@@ -37,10 +39,11 @@ function readCredential(baseUrl) {
   }
 }
 
-function writeCredential(apiKey, baseUrl) {
+function writeCredential(apiKey, baseUrl, data) {
   const file = credentialFile(baseUrl);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${apiKey}\n`, { mode: 0o600 });
+  writeUid(baseUrl, apiKey, data);
   return file;
 }
 
@@ -77,6 +80,9 @@ async function cmdLogin(argv, services = {}) {
   }
   const baseUrl = resolveBaseUrl(argv);
   const client = new WinkClient({ baseUrl });
+  let tracking = services.tracking;
+  try { tracking ||= require("./tracking").createTracking({ client }); } catch (_) {}
+  try { tracking?.emit("auth_start"); } catch (_) {}
   // authUrl() 为纯本地计算，不发起网络请求，保证 10 秒内必定输出链接。
   const link = client.authUrl();
   process.stdout.write(`\n${link.auth_url}\n\n`);
@@ -92,11 +98,10 @@ async function cmdLogin(argv, services = {}) {
       const data = dataObject(payload);
       const apiKey = responseOk(payload) && typeof data.api_key === "string" ? data.api_key : "";
       if (apiKey) {
-        writeCredential(apiKey, baseUrl);
+        writeCredential(apiKey, baseUrl, data);
         try {
-          const tracking = services.tracking || require("./tracking").createTracking({ client: client.withApiKey(apiKey) });
-          tracking.authSuccess(client.withApiKey(apiKey), data);
-          if (!services.tracking) tracking.firstRun();
+          tracking?.authSuccess(client.withApiKey(apiKey), data);
+          if (!services.tracking) tracking?.firstRun();
         } catch (_) { /* Analytics failure must not turn a successful login into a retry. */ }
         process.stdout.write(`${STATUS_TOKEN_CONNECTED}\nWink 云端处理：已连接\n`);
         return 0;
@@ -106,6 +111,7 @@ async function cmdLogin(argv, services = {}) {
     }
     await sleep(POLL_INTERVAL_SECONDS * 1000);
   }
+  try { tracking?.emit("auth_failed", { error_code: -1, error_message: "授权超时，请重新连接" }); } catch (_) {}
   process.stderr.write("错误：授权超时，请重新连接\n");
   return 1;
 }
@@ -117,6 +123,7 @@ function cmdLogout(argv) {
   let removed = false;
   try {
     fs.rmSync(file, { force: true });
+    fs.rmSync(identityFile(baseUrl), { force: true });
     removed = true;
   } catch (_) {
     removed = false;

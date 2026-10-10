@@ -42,7 +42,7 @@ function createRechargeHandler({ client, env, openBrowser, report, attribution, 
     if (attribution && !opened) {
       const entry = new URL(PAYMENT_URLS[env]);
       entry.searchParams.set("source", attribution.source);
-      const taskId = rejection?.data?.task_id || rejection?.data?.msg_id;
+      const taskId = attribution.taskId || rejection?.data?.task_id || rejection?.data?.msg_id;
       if (taskId) entry.searchParams.set("trigger_task_id", String(taskId));
       url = entry.toString();
     }

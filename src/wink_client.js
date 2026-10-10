@@ -348,12 +348,12 @@ class WinkClient {
         const submittedData = dataObject(submitted);
         options.onSubmit?.({ event: "submit_response", at: new Date().toISOString(),
           started_at: submitStartedAt, duration_ms: Math.round(performance.now() - submitStarted),
-          attempt: submitAttempt, code: submitted.code, accepted: responseOk(submitted),
+          attempt: submitAttempt, code: submitted.code, error_message: submitted.message ?? null, accepted: responseOk(submitted),
           task_id: submittedData.task_id || submittedData.msg_id || null });
       } catch (error) {
         options.onSubmit?.({ event: "submit_error", at: new Date().toISOString(),
           started_at: submitStartedAt, duration_ms: Math.round(performance.now() - submitStarted),
-          attempt: submitAttempt, http_status: error.httpStatus ?? null, error_code: error.extCode ?? null });
+          attempt: submitAttempt, http_status: error.httpStatus ?? null, error_code: error.extCode ?? error.code ?? null, error_message: error.message ?? null });
         // Retry only an explicit rejection by submit, never an ambiguous network failure.
         if (isInsufficientBeans(error) && options.onInsufficientBeans && await options.onInsufficientBeans(error)) continue;
         throw error;

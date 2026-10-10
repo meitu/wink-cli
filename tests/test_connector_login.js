@@ -29,8 +29,10 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
         writeFileSync(...args) { writes.push(args); },
       };
       if (name === "path") return path;
+      if (name === "./user_identity") return { writeUid() {}, identityFile() { return "/fixture/credentials/uid"; } };
       if (name === "./wink_client") return {
         WinkClient: class {
+          withApiKey() { return this; }
           authUrl() { events.push("auth-url"); return { auth_url: url, once_code: code }; }
           async exchange(onceCode) {
             events.push("exchange"); queries.push(onceCode);
@@ -66,7 +68,13 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
     },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/management_commands.js"), "utf8"), context);
-  const result = await context.module.exports.cmdLogin(autoOpen ? ["--open-browser"] : []);
+  const trackingEvents = [];
+  const result = await context.module.exports.cmdLogin(autoOpen ? ["--open-browser"] : [], { tracking: {
+    emit: (event, fields) => trackingEvents.push({ event, fields }),
+    authSuccess: () => trackingEvents.push({ event: "auth_success" }),
+  } });
+  assert.deepStrictEqual(trackingEvents.map(e => e.event), ["auth_start", timeout ? "auth_failed" : "auth_success"]);
+  if (timeout) assert.strictEqual(trackingEvents[1].fields.error_code, -1);
   assert.strictEqual(events.filter(event => event === "auth-url").length, 1);
   assert.ok(queries.every(value => value === code), "keep polling the same authorization code");
   assert.strictEqual(launches.length, autoOpen ? 1 : 0, "open once even when authorization is pending");

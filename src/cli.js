@@ -24,6 +24,8 @@ const { imageSize } = require("image-size");
 const { readMp4Metadata } = require("./mp4_metadata");
 const { createFileProgress } = require("./cli_progress");
 const { createRechargeHandler } = require("./beans");
+const { writeUid } = require("./user_identity");
+const { randomUUID } = require("crypto");
 const { createTracking } = require("./tracking");
 const { fetchBeautyStyles, selectBeautyStyle, buildBeautySubmission, formatBeautyStyles } = require("./ai_beauty");
 const {
@@ -82,6 +84,7 @@ const MAIN_HELP = [
   "  wink-cli [全局选项] [功能命令] [工具选项]",
   "",
   "全局选项:",
+  "  --expert-id <id>          调用专家标识；优先于 WINK_EXPERT_ID，未提供时埋点为 null",
   "  -h, --help                显示帮助（本页或子命令帮助）",
   "",
   "功能命令:",
@@ -145,7 +148,8 @@ function toolHelp(command) {
     "  --json                       以 JSON 输出结果汇总（进度信息走 stderr）",
     "  --progress-json              stderr 输出逐行 JSON 进度事件（其他诊断仍为文本）",
     "  --channel-id <id>            投递渠道 client_channel_id；默认按 Agent 环境推断（workbuddy/cursor/claude/codex/cli）",
-    "  --tracking-prompt <text>      WorkBuddy 画质修复埋点提示词（可选，基础脱敏后上报）",
+    "  --expert-id <id>             调用专家标识；优先于 WINK_EXPERT_ID，未提供时埋点为 null",
+    "  --tracking-prompt <text>      WorkBuddy 云处理埋点提示词（可选，基础脱敏后上报）",
     "  --client-model <name>        机型 client_model；默认自动采集（如 Apple M4 / Windows CPU / 安卓机型名）",
     "  -h, --help                   显示本帮助",
     "",
@@ -326,10 +330,11 @@ function readCredential(baseUrl) {
   }
 }
 
-function writeCredential(apiKey, baseUrl) {
+function writeCredential(apiKey, baseUrl, data) {
   try {
     fs.mkdirSync(CREDENTIAL_DIR, { recursive: true });
     fs.writeFileSync(credentialFile(baseUrl), `${apiKey}\n`, { mode: 0o600 });
+    writeUid(baseUrl, apiKey, data);
   } catch (_) { /* 写不进就只在本次会话使用 */ }
 }
 
@@ -365,6 +370,7 @@ async function ensureApiKey(client, flags, hooks = {}) {
     const cached = (hooks.readCredential || readCredential)(client.baseUrl);
     if (cached) return cached;
   }
+  hooks.onAuthStart?.();
   const link = client.authUrl();
   progress("未检测到可用的 api_key，开始 SSO 授权登录…");
   progress(`授权链接: ${link.auth_url}`);
@@ -378,7 +384,7 @@ async function ensureApiKey(client, flags, hooks = {}) {
       const r = await client.exchange(link.once_code);
       const key = r && r.code === 0 && r.data && r.data.api_key;
       if (typeof key === "string" && key) {
-        (hooks.writeCredential || writeCredential)(key, client.baseUrl);
+        (hooks.writeCredential || writeCredential)(key, client.baseUrl, r.data);
         hooks.onAuthSuccess?.(key, r.data);
         progress("授权成功，登录凭据已保存");
         return key;
@@ -393,6 +399,7 @@ async function ensureApiKey(client, flags, hooks = {}) {
     }
     await (hooks.sleep || sleep)(POLL_INTERVAL_SECONDS * 1000);
   }
+  hooks.onAuthFailed?.({ error_code: -1, error_message: `授权超时${lastStatus ? `；最后响应: ${lastStatus}` : ""}` });
   throw new WinkError(`SSO 授权超时，接口: ${client.baseUrl}/init/exchange${lastStatus ? `；最后响应: ${lastStatus}` : ""}。请重新运行命令，并在新打开的授权页完成授权`);
 }
 
@@ -500,6 +507,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
   let apiKey;
   try {
     apiKey = await ensureApiKey(client, flags, { ...services.auth,
+      onAuthStart: () => services.tracking?.emit("auth_start"),
+      onAuthFailed: fields => services.tracking?.emit("auth_failed", fields),
       onAuthSuccess: (key, data) => {
         services.tracking?.authSuccess(client.withApiKey(key), data);
         services.auth?.onAuthSuccess?.(key, data);
@@ -544,6 +553,12 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
   progress(`${tool.name} · 档位 ${level} ${levelInfo(level, command).name} · 共 ${files.length} 个输入`);
   progress("");
 
+  const groupId = randomUUID();
+  const track = (event, fields = {}) => {
+    try { services.tracking?.emit(event, { group_id: groupId, cloud_type: command,
+      level, level_name: levelInfo(level, command).name, ...fields }); } catch (_) {}
+  };
+  track("cloud_group_process_start", { prompt: optionValue(flags, "tracking-prompt"), file_count: files.length });
   const results = [];
   let succeeded = 0;
   let failed = 0;
@@ -551,6 +566,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
 
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
+    const localTaskId = randomUUID();
+    const trackTask = (event, fields = {}) => track(event, { task_id: localTaskId, ...fields });
     const fileProgress = createFileProgress(file, process.stderr, { json: optionFlag(flags, "progress-json") });
     const contentType = contentTypeOfFile(file);
     let info;
@@ -595,22 +612,28 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     }
 
     let taskId;
+    let trackingStage = "upload";
     try {
       const started = Date.now();
+      trackTask("cloud_upload_start", { media_type: Number(contentType),
+        duration: contentType === "2" ? (Number.isFinite(media.duration) ? Math.round(media.duration * 1000) : null) : 0,
+        file_size: media.size, file_path: file });
       fileProgress.upload(0);
       if (prepared.reference && !referenceUpload) {
         referenceUpload = await authed.uploadFile(prepared.reference, { test: isTest, onProgress: () => {} });
       }
       const uploaded = await authed.uploadFile(file, { test: isTest, onProgress: (value) => fileProgress.upload(value) });
+      trackTask("cloud_upload_success");
+      trackingStage = "submit";
       fileProgress.upload(1, true);
       fileProgress.processing();
       const waitForRecharge = createRechargeHandler({
         client: authed,
         env,
-        attribution: services.tracking?.enabled ? { source: "workbuddy" } : undefined,
+        attribution: services.tracking?.enabled ? { source: "workbuddy", taskId: localTaskId } : undefined,
         onInsufficient: (rejection, balance) => {
           const rejected = dataObject(rejection);
-          services.tracking?.emit("credit_insufficient", { task_id: rejected.task_id || rejected.msg_id || null,
+          trackTask("credit_insufficient", {
             required_credit: rejected.required_credit, balance_credit: balance ?? rejected.balance_credit });
         },
         openBrowser: services.recharge?.openBrowser || openBrowser,
@@ -646,10 +669,20 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
           onQuery: detail => progress(JSON.stringify({ type: "diagnostic", file, ...detail })),
         } : {}),
         onSubmit: detail => {
-          if (optionFlag(flags, "progress-json")) progress(JSON.stringify({ type: "diagnostic", file, ...detail }));
-          if (detail.event === "submit_response" && detail.accepted && detail.task_id) {
-            services.tracking?.emit("task_submit", { task_id: detail.task_id,
-              prompt: optionValue(flags, "tracking-prompt"), media_type: contentType === "2" ? "video" : "image", file_count: 1 });
+          const { error_message: _errorMessage, ...diagnostic } = detail;
+          if (optionFlag(flags, "progress-json")) progress(JSON.stringify({ type: "diagnostic", file, ...diagnostic }));
+          if (detail.event === "submit_start") {
+            trackingStage = "submit";
+            trackTask("cloud_submit_start");
+          } else if (detail.event === "submit_response") {
+            const accepted = detail.accepted && typeof detail.task_id === "string" && detail.task_id;
+            trackTask(accepted ? "cloud_submit_success" : "cloud_submit_fail", accepted ? {} : {
+              error_code: detail.code === 0 ? "INVALID_TASK_ID" : (detail.code ?? null),
+              error_message: detail.code === 0 ? "投递响应未返回有效任务 ID" : (detail.error_message || "投递失败") });
+            if (accepted) { taskId = detail.task_id; trackingStage = "process"; }
+          } else if (detail.event === "submit_error") {
+            trackTask("cloud_submit_fail", { error_code: detail.error_code ?? detail.http_status ?? null,
+              error_message: detail.error_message || "投递请求失败" });
           }
         },
         onProgress: ({ phase, remainingMs, elapsedMs, taskId: currentTaskId }) => {
@@ -669,6 +702,8 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
       }
       const remote = resultUrl(finalPayload);
       const seconds = ((Date.now() - started) / 1000).toFixed(1);
+      trackTask("cloud_process_success", { msg_id: taskId || null });
+      trackingStage = "finished";
       fileProgress.finish(`${seconds}秒 → ${remote}`, remote);
       succeeded += 1;
       results.push({
@@ -686,6 +721,9 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         result_url: remote,
       });
     } catch (error) {
+      if (trackingStage === "upload") trackTask("cloud_upload_fail", {
+        error_code: error.extCode ?? error.code ?? error.httpStatus ?? null, error_message: error.message });
+      else if (trackingStage === "process") trackTask("cloud_process_fail", { msg_id: taskId || null });
       failed += 1;
       const reason = `${error.message}${taskId ? ` · task_id=${taskId}` : ""}`;
       fileProgress.fail(reason);
@@ -694,6 +732,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     }
   }
 
+  track("cloud_group_process_finish");
   if (asJson) {
     out(JSON.stringify({
       ok: failed === 0,
@@ -770,20 +809,33 @@ async function execute(argv, services = {}) {
   return 1;
 }
 
-// Keep read-only status/doctor/skill and unrelated experts free of MVP tracking.
+// Track every cloud tool; read-only management commands stay outside tracking.
 async function main(argv, services = {}) {
   const { _, flags } = parseArgv(argv);
-  const eligible = !_[0] || ["help", "version", "login", "auth", "picture_quality"].includes(_[0]);
+  if (flags["expert-id"] !== undefined &&
+      (typeof flags["expert-id"] !== "string" || !flags["expert-id"].trim())) {
+    throw new Error("--expert-id 需要非空专家标识");
+  }
+  const eligible = !_[0] || ["help", "version", "login", "auth"].includes(_[0]) || Object.hasOwn(COMMANDS, _[0]);
   let tracking = services.tracking;
   if (!tracking && eligible && !services.createClient) {
     try {
       const { baseUrl } = resolveEnvironment(flags);
       tracking = createTracking({ client: new WinkClient({ baseUrl,
         apiKey: optionValue(flags, "api-key") || process.env.WINK_CLI_API_KEY || readCredential(baseUrl) }),
-        source: optionValue(flags, "channel-id") });
+        source: optionValue(flags, "channel-id"), expertId: optionValue(flags, "expert-id") });
     } catch (_) { /* Optional analytics cannot block CLI startup. */ }
   }
-  const code = await execute(argv, { ...services, tracking });
+  // Consume the global tracking option before strict subcommand parsers run.
+  // Preserve all other tokens, including duplicates and positional arguments.
+  const commandArgv = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--") { commandArgv.push(...argv.slice(i)); break; }
+    if (argv[i] === "--expert-id") { i += 1; continue; }
+    if (argv[i].startsWith("--expert-id=")) continue;
+    commandArgv.push(argv[i]);
+  }
+  const code = await execute(commandArgv, { ...services, tracking });
   if (code === 0 && eligible) tracking?.firstRun();
   return code;
 }

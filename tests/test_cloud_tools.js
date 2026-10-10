@@ -5,9 +5,22 @@ const os = require("os");
 const path = require("path");
 const http = require("http");
 const { main } = require("../src/cli");
-const { prepareTool } = require("../src/cloud_tools");
+const { prepareTool, COMMANDS } = require("../src/cloud_tools");
 const { WinkClient, checkAiTypeSupport } = require("../src/wink_client");
+assert.deepStrictEqual(prepareTool("picture_quality", { "expert-id": "wink-quality-restoration" }),
+  prepareTool("picture_quality", {}), "expert ID must not change processing parameters");
+for (const value of [true, "", "   "]) {
+  assert.throws(() => prepareTool("picture_quality", { "expert-id": value }), /expert-id.*非空/);
+}
 const rows = require("./fixtures/cf-cloud-tools-v5.json").slice(1);
+assert.deepStrictEqual(
+  prepareTool("picture_quality", { "tracking-prompt": "画质修复埋点测试" }),
+  prepareTool("picture_quality", {}),
+  "tracking prompt must pass validation without changing processing parameters");
+for (const value of [true, "", "   "]) {
+  assert.throws(() => prepareTool("picture_quality", { "tracking-prompt": value }), /tracking-prompt.*非空/);
+}
+assert.deepStrictEqual(prepareTool("denoise", { "tracking-prompt": "test" }), prepareTool("denoise", {}));
 
 async function capture(fn) {
   const stdout = process.stdout.write, stderr = process.stderr.write;
@@ -38,7 +51,10 @@ async function capture(fn) {
   try {
     await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
     base = `http://127.0.0.1:${server.address().port}`;
+    const tracked = [];
+    let firstRuns = 0;
     const services = {
+      tracking: { bind() {}, firstRun() { firstRuns++; }, emit(event, fields) { tracked.push({ event, ...fields }); } },
       createClient: options => {
         const client = new WinkClient({ ...options, baseUrl: base });
         client.withApiKey = key => {
@@ -65,12 +81,25 @@ async function capture(fn) {
       // Ensure matching does not pick an earlier different strength, media, or local-only config.
       if (ext) configs.unshift({ type, content_type: Number(contentType), ext_value: "wrong", func_id: 888 });
       configs.unshift({ type, content_type: Number(contentType), ext_value: ext, is_local_process: 1, func_id: 777 });
-      const args = [command, "--input", input, "--output", path.join(dir, "out"), "--env", "pre", "--api-key", "offline-test", "--json", ...(extras[command] || [])];
+      const args = [command, "--input", input, "--output", path.join(dir, "out"), "--env", "pre", "--api-key", "offline-test", "--json", "--tracking-prompt", "本次处理要求", ...(extras[command] || [])];
       if (["picture_quality", "remove_watermark", "video_frame"].includes(command)) args.push("--level", level);
       if (command === "old_photo") args.push("--variant", type === "161" ? "quality" : type === "164" ? "shared" : "standard");
-      submitted = null; uploads = []; calls = [];
+      submitted = null; uploads = []; calls = []; tracked.length = 0; firstRuns = 0;
       const result = await capture(() => main(args, services));
       assert.strictEqual(result.code, 0, `${name}: ${result.err}`);
+      assert.strictEqual(firstRuns, 1, `${command}: tracking eligibility must include every tool`);
+      assert.deepStrictEqual(tracked.map(e => e.event), ["cloud_group_process_start", "cloud_upload_start",
+        "cloud_upload_success", "cloud_submit_start", "cloud_submit_success", "cloud_process_success",
+        "cloud_group_process_finish"], command);
+      assert.strictEqual(tracked[0].prompt, "本次处理要求");
+      const effectiveLevel = ["picture_quality", "remove_watermark", "video_frame"].includes(command)
+        ? Number(level) : COMMANDS[command].defaultLevel;
+      for (const event of tracked) {
+        assert.strictEqual(event.cloud_type, command);
+        assert.strictEqual(event.level, effectiveLevel);
+        assert.strictEqual(event.level_name, COMMANDS[command].levels.find(x => x.level === effectiveLevel).name);
+      }
+      assert.strictEqual(new Set(tracked.map(e => e.group_id)).size, 1);
       assert.strictEqual(submitted.type, type, name);
       assert.strictEqual(submitted.content_type, contentType, name);
       assert.strictEqual(JSON.parse(submitted.right_detail).function_id, command === "ai_beauty" ? "672" : "999");

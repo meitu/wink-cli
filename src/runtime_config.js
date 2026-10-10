@@ -26,9 +26,9 @@ function authPageBaseUrl(baseUrl) {
 // 保留历史凭据目录，避免项目精简后要求已有用户重新授权。
 const CREDENTIAL_DIR = path.join(os.homedir(), ".wink-mcp-server", "cli-credentials");
 
-function credentialFile(baseUrl) {
+function credentialFile(baseUrl, homeDir) {
   const scope = createHash("sha256").update(baseUrl.replace(/\/$/, "")).digest("hex").slice(0, 24);
-  return path.join(CREDENTIAL_DIR, `${scope}.api_key`);
+  return path.join(homeDir === undefined ? CREDENTIAL_DIR : path.join(homeDir, ".wink-mcp-server", "cli-credentials"), `${scope}.api_key`);
 }
 
 module.exports = { ENVIRONMENTS, AUTH_ENVIRONMENTS, authPageBaseUrl, DEFAULT_ENV, CREDENTIAL_DIR, credentialFile };

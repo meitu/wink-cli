@@ -20,7 +20,7 @@ try {
     const { WinkClient } = require(${JSON.stringify(path.join(root, "src/wink_client.js"))});
     WinkClient.prototype.exchange = async function(code) {
       record({type:'exchange', code, baseUrl:this.baseUrl});
-      return {code:0, data:{api_key:'fixture-only-key'}};
+      return {code:0, data:{api_key:'fixture-only-key',user_info:{uid:'1813010157'}}};
     };
     require(${JSON.stringify(path.join(root, "src/open_browser.js"))}).openBrowser = url => record({type:'browser',url});
     const forbidden = () => { throw new Error('unexpected real side effect'); };
@@ -58,6 +58,11 @@ try {
   assert.strictEqual(url.searchParams.has("op_type"), false);
   assert.match(run(["--env", "beta", "status"]).stdout, /WINK_AUTH=connected/);
   assert.match(run(["status"]).stdout, /WINK_AUTH=disconnected/, "credentials stay environment-scoped");
+  const identityPath = path.join(temp, "betacliapi-winkcut.meitu.com", "key.uid.json");
+  const identity = JSON.parse(fs.readFileSync(identityPath, "utf8"));
+  assert.strictEqual(identity.uid, "1813010157");
+  assert.ok(!JSON.stringify(identity).includes("fixture-only-key"));
+  if (process.platform !== "win32") assert.strictEqual(fs.statSync(identityPath).mode & 0o777, 0o600);
   const oldStatus = run(["status", "--base-url=https://betacliapi-winkcut.meitu.com"], true);
   assert.match(oldStatus.stdout, /WINK_AUTH=connected/, "legacy entry shares the same credentials");
   const doctor = JSON.parse(run(["doctor", "--env=beta", "--json"]).stdout);
@@ -67,6 +72,7 @@ try {
   assert.strictEqual(helpLogout.status, 0);
   assert.match(run(["status", "--env=beta"]).stdout, /WINK_AUTH=connected/);
   assert.strictEqual(run(["logout", "--env=beta"]).status, 0);
+  assert.ok(!fs.existsSync(identityPath));
   assert.match(run(["status", `--base-url=${url.origin}`], true).stdout, /WINK_AUTH=disconnected/);
   assert.strictEqual(run(["doctor", "--env=wrong"]).status, 1);
   const skill = run(["skill", "--json"]);

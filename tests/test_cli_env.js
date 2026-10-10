@@ -43,7 +43,7 @@ async function capture(fn) {
     assert.strictEqual(new URL(new WinkClient({ baseUrl: "http://localhost:1234" }).authUrl().auth_url).origin, "http://localhost:1234");
     assert.deepStrictEqual(resolveEnvironment({}), { env: "release", baseUrl: endpoints.release, isTest: false },
       "legacy base-url environment variable must not change the release default");
-    assert.strictEqual(new Set(Object.values(endpoints).map(credentialFile)).size, 3, "credentials are isolated");
+    assert.strictEqual(new Set(Object.values(endpoints).map(baseUrl => credentialFile(baseUrl))).size, 3, "credentials are isolated");
     const input = path.join(root, "input.mp4"); fs.writeFileSync(input, "fake-video");
     for (const requested of [undefined, "pre", "beta", "release"]) {
       const env = requested || "release", base = endpoints[env];

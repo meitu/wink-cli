@@ -56,10 +56,19 @@ const COMMANDS = Object.freeze({
 
 function prepareTool(command, flags) {
   const params = {}, submit = {};
-  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json", "progress-json", "channel-id", "client-model"]);
+  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json", "progress-json", "channel-id", "client-model", "expert-id"]);
+  allowed.add("tracking-prompt");
+  if (flags["tracking-prompt"] !== undefined &&
+      (typeof flags["tracking-prompt"] !== "string" || !flags["tracking-prompt"].trim())) {
+    throw new WinkError("--tracking-prompt 需要非空提示词");
+  }
   if (flags["progress-json"] !== undefined && flags["progress-json"] !== true) throw new WinkError("--progress-json 是开关，不接受参数值");
   if (flags["channel-id"] !== undefined) {
     if (typeof flags["channel-id"] !== "string" || !flags["channel-id"].trim()) throw new WinkError("--channel-id 需要非空渠道值");
+  }
+  if (flags["expert-id"] !== undefined &&
+      (typeof flags["expert-id"] !== "string" || !flags["expert-id"].trim())) {
+    throw new WinkError("--expert-id 需要非空专家标识");
   }
   if (flags["client-model"] !== undefined) {
     if (typeof flags["client-model"] !== "string" || !flags["client-model"].trim()) throw new WinkError("--client-model 需要非空机型值");

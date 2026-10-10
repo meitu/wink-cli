@@ -41,6 +41,21 @@ try {
   assert.match(plain.stdout, /wink-cli skill --reference http-api/);
   const structured = run(["skill", "--json"]);
   assert.strictEqual(structured.status, 0, structured.stderr);
+  for (const args of [
+    ["skill", "--json", "--expert-id", "wink-quality-restoration"],
+    ["--expert-id=wink-quality-restoration", "skill", "--json"],
+    ["--expert-id", "skill", "skill", "--json"],
+  ]) {
+    const result = run(args);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.strictEqual(result.stdout, structured.stdout);
+  }
+  for (const args of [
+    ["skill", "--expert-id"], ["skill", "--expert-id="],
+    ["skill", "--expert-id", "wink-quality-restoration", "--json", "--json"],
+  ]) {
+    assert.strictEqual(run(args).status, 1, JSON.stringify(args));
+  }
   assert.deepStrictEqual(JSON.parse(structured.stdout), {
     name: "wink-cli-usage", cli_version: pkg.version, skill_version: pkg.version,
     reference: null, content: plain.stdout,

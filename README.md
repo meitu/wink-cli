@@ -255,15 +255,34 @@ npm pack
 兼容旧配置：`wink-connector` 暂时保留为管理命令的兼容入口，复用相同实现与凭据；新配置统一使用 `wink-cli`。
 
 
-## WorkBuddy 高清修复师 MVP 埋点
+## WorkBuddy 云处理埋点
 
-WorkBuddy 来源的 `picture_quality`、登录和首次成功命令通过当前环境的 `POST /event/report` 上报，表单包含客户端公共参数和 JSON 字符串 `events`；不会请求文档中的 Mock 地址。来源由 `--channel-id workbuddy`、`WINK_TASK_CHANNEL_ID` 或宿主检测确定，其他来源不启用。`WINK_TELEMETRY=0` 关闭上报。
+WorkBuddy 来源的所有云处理功能、登录和首次成功命令通过当前环境的 `POST /event/report` 上报，表单包含客户端公共参数和 JSON 字符串 `events`；不会请求文档中的 Mock 地址。来源由 `--channel-id workbuddy`、`WINK_TASK_CHANNEL_ID` 或宿主检测确定，其他来源不启用。`WINK_TELEMETRY=0` 关闭上报。
 
-- `cli_first_run`：首次成功执行受支持的 CLI 命令后上报。安装标识按本机用户持久化于 `~/.wink-mcp-server/tracking/installation-id`，升级保持；成功回执后按 API 环境去重，并发通过锁互斥，失败下次成功运行重试。帮助/版本命令也算成功运行；只读 `status/doctor/skill`、退出登录和其他专家不触发。
-- `auth_success`：仅在浏览器授权交换得到有效凭据时上报，使用缓存凭据不重复上报。仅采用响应中的 `data.user_id`，未知保持 null；本地用户关联按服务环境和凭据摘要隔离，不以凭据代替用户 ID。
-- `task_submit`：服务端接受提交并返回任务 ID 后上报。CLI 每个素材创建一个服务端任务，故每条 `file_count=1`；重试被拒的提交不算成功投递。`--tracking-prompt` 显式接收本次用户要求，基础脱敏链接、本地路径、邮箱、手机号、证件号和常见凭据后限制 2000 字符，缺少时 null。禁止传入素材内容或整段聊天历史。
-- `credit_insufficient`：提交明确返回美豆不足时上报；成功查询余额则携带实际余额。所需金额仅用响应 `data.required_credit`，任务 ID 仅用响应 `data.task_id/msg_id`，没有则 null。充值页透传 `source=workbuddy`，存在服务端任务 ID 时透传 `trigger_task_id`。
+- `cli_first_run`：首次成功执行受支持的 CLI 命令后上报。设备标识统一使用 `gid`（复用任务设备编号 `gnum`）；成功回执后按 API 环境去重，并发通过锁互斥，失败下次成功运行重试。帮助/版本命令也算成功运行；只读 `status/doctor/skill` 和退出登录不触发。
+- `auth_start`：实际进入浏览器授权流程时上报一次（自动登录和显式 login/auth 均支持），使用缓存凭据不触发。
+- `auth_failed`：授权最终超时时上报一次，`error_code=-1`；轮询期间暂未授权不逐次记为失败。
+- `auth_success`：仅在浏览器授权交换得到有效凭据时上报，使用缓存凭据不重复上报。优先采用响应中的 `data.user_info.uid`（兼容旧 `data.user_id`），未知保持 null；本地用户关联按服务环境和凭据摘要隔离，不以凭据代替用户 ID。
+- `cloud_group_process_start` / `cloud_group_process_finish`：完成登录与能力配置读取后，进入文件批次处理时开始；所有文件成功、失败或本地校验跳过后结束。每批生成 UUID `group_id`，开始事件携带本批去重后的 `file_count` 和 `prompt`。进程被强制中断可能没有结束事件。
+- `cloud_upload_start` / `cloud_upload_success` / `cloud_upload_fail`：文件通过本地校验后，在实际上传前、上传成功、上传异常时分别上报。每个文件生成 UUID `task_id`；开始事件记录 `media_type`（1 图片、2 视频）、`duration`（毫秒，图片为 0，未知为 null）、`file_size`（字节）和 `file_path`（实际本地路径，按事件表要求）。本地校验跳过的文件不会产生上传事件。
+- `cloud_submit_start` / `cloud_submit_success` / `cloud_submit_fail`：每次调用投递接口前及收到结果后上报；成功需接口接受且返回有效任务号。美豆不足、HTTP 异常及无效响应均算本次投递失败。充值重试会再次产生投递事件，沿用本地 `task_id` 和 `group_id`。
+- `cloud_process_success` / `cloud_process_fail`：投递成功后，查询得到可交付结果或处理链路失败（含查询异常、超时）时上报；`msg_id` 使用服务端任务号，`task_id` 仍是 CLI 本地 UUID。上传或投递失败不会额外上报处理失败。
+- `credit_insufficient`：每次提交明确返回美豆不足时上报，携带同一文件的本地 `task_id` 和 `group_id`；成功查询余额则携带实际余额，所需金额仅用响应 `data.required_credit`。充值入口的 `trigger_task_id` 使用此本地任务 ID，当前充值页渠道参数仍为 `source=workbuddy`。
 
-所有事件带 ISO 8601 UTC `timestamp`、`source`、`installation_id`、`user_id`、`cli_version`、`expert_id=wink-quality-enhance`。`task_start` 与 `purchase_success` 必须由服务端开始处理状态/支付回调提供，当前不使用提交成功或余额增加代替；因此这两项看板指标尚不能依靠 CLI 统计。尚需联调确认用户 ID 字段、拒绝投递时的任务 ID/所需金额、支付页归因参数消费方式，以及文档 5.2 的最终字段规范。
+每个事件的自定义参数统一放在 `params` 对象中（无自定义参数时为 `{}`），公共字段仍在事件外层。`cloud_upload_fail` 和 `cloud_submit_fail` 的 `params` 包含 `error_code`、`error_message`；优先使用服务端错误码，其次网络错误码/HTTP 状态，未知为 null。错误消息进行基础脱敏。投递响应成功但缺少任务号使用 `INVALID_TASK_ID`。
+
+上述 10 个 `cloud_*` 事件均携带 `cloud_type`（CLI 功能名，如 `picture_quality`）、`level`（实际生效的整数档位，含默认值）、`level_name`（档位名称，如 `超清`）。单档功能沿用配置中的档位 1；`--strength`、`--sr-mode`、风格等独立参数不作为 `level`。
+
+`--tracking-prompt` 显式接收本次用户要求，只随批次开始上报；基础脱敏链接、本地路径、邮箱、手机号、证件号和常见凭据后限制 2000 字符，缺少时 null。禁止传入素材内容或整段聊天历史。
+
+所有事件带 `app_version`、`cli_version`、`expert_id`；`expert_id` 由调用专家传入（`--expert-id` > `WINK_EXPERT_ID`），使用专家自身的标识（如 `wink-quality-restoration`），未传时为 null。`app_version` 与 `cli_version` 均取当前运行 CLI 的 `package.json` 版本。设备和用户标识统一使用 `gid`、`uid`，不再上报 `installation_id`、`user_id`、`timestamp` 和 `source`。同时携带接口公共字段：`gid` 复用投递设备编号 `gnum`（十进制字符串，避免 int64 精度丢失），`uid` 取登录响应 `data.user_info.uid` 或对应本地身份缓存（兼容旧 `data.user_id`，未知为 null），`channel` 为来源渠道（当前为 `workbuddy`），`time` 为 Unix 毫秒时间戳。`model` 统一取运行环境的 CPU 型号（`os.cpus()[0].model`，例如 `Apple M4`），获取不到时为 null；不受 `--client-model` 或 `WINK_TASK_CLIENT_MODEL` 覆盖。`carrier`、`network` 目前没有可靠的自动采集来源，默认 null；宿主可通过 `WINK_TELEMETRY_CARRIER`、`WINK_TELEMETRY_NETWORK` 提供实际值，不能将示例值当作真实网络信息。`purchase_success` 和 `purchase_failed` 由支付页或服务端支付结果回调提供；CLI 仅能查询余额，余额增加不等于支付成功，等待充值超时也不等于支付失败，因此不在 CLI 中伪造支付结果事件。尚需联调确认用户 ID 字段、拒绝投递时的所需金额、支付页归因参数消费方式，以及文档 5.2 的最终字段规范。
+
+系统字段采集：`os_type` 支持 `macOS` / `Windows` / `Linux` / `Android` / `iOS` / `HarmonyOS`（其他平台保留 Node.js 平台名）。Android/鸿蒙使用运行平台或已有移动端环境信号识别，鸿蒙信号优先于 Android；iOS 使用运行平台、`IOS_MODEL` 或 iPhone/iPad/iPod 模拟器型号识别，不使用编译部署目标推断运行版本。仅手机品牌不能判断是否运行鸿蒙。
+
+`os_version`：macOS 读取产品版本；Windows 使用 NT 版本 / 构建号；Linux 使用内核版本。Android 读取 `/system/bin/getprop ro.build.version.release`；iOS 模拟器可读取宿主提供的 `SIMULATOR_RUNTIME_VERSION`。iOS 真机和鸿蒙的产品版本由原生宿主提供，无法获取时为 null，不用 Darwin/Linux 内核版本或 Android 兼容版本冒充。单次系统查询最多等待 1 秒，失败不影响业务。
+
+原生宿主可设置 `WINK_TELEMETRY_OS_TYPE`（上述六种名称之一，不区分大小写）和 `WINK_TELEMETRY_OS_VERSION`（实际运行系统的产品版本），优先于自动识别；这些是本 CLI 的集成参数，不是系统自动提供的变量。iOS 宿主可从 [UIDevice.systemVersion](https://developer.apple.com/documentation/uikit/uidevice/systemversion) 获取真实版本；Android 版本属性依据 [AOSP Build.VERSION.RELEASE](https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/os/Build.java)。
 
 每次上报在独立后台进程执行，主进程不等待网络；后台有 3 秒总时限，失败不改变业务结果/退出码。凭据经匿名管道传递，不进入参数或埋点事件，不落盘新增副本。除首次运行外，事件采用尽力上报，不承诺失败重试或服务端恰好一次接收；不要将该链路当作计费账本。
+
+UID 与 api_key 保存在同一 `~/.wink-mcp-server/cli-credentials/` 目录，按接口环境隔离：原有 `.api_key` 格式不变，配套 `.uid.json` 仅保存 UID 与 api_key 摘要（权限 0600），读取时核对摘要避免账号串用。所有渠道登录均保存 UID，退出登录同时清除当前环境的两份缓存。旧缓存缺少 UID 时，需要重新授权获取，不从 api_key 或其他账号推断。

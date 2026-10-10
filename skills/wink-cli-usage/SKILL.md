@@ -35,7 +35,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.3 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.4 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -259,7 +259,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.3 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.4 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 
@@ -277,6 +277,8 @@ wink-cli picture_quality --help
 - 显示提示后继续等待原 CLI 进程，每 5 秒的余额查询和最长 300 秒等待由 CLI 负责；不要另开余额轮询、重启命令、重复投递或要求用户回复“已充值”才能继续。无需每 5 秒重复发送购买文案；余额增加仅代表可重试，不保证足够，最终提交是否成功以服务端为准。再次不足时沿用 CLI 的剩余等待时间。
 - 基准余额获取失败、进程退出或等待超时时，按实际日志说明当前阶段，提供真实购买链接，但不再说“正在等待／充值后自动继续”。已有 task_id 时保留供核查；只有真实成功且有有效结果链接才交付“查看优化后素材”。此规则不放宽专家能力边界，也不允许尚未接入的能力发起任务。
 
-### WorkBuddy 画质修复埋点
+### WorkBuddy 云处理埋点
 
-仅在 WorkBuddy 执行 `picture_quality` 时，业务参数同时带 `--channel-id workbuddy --tracking-prompt <本次用户处理要求>`。提示词只取本次任务要求，先剔除凭据、联系方式、素材路径和链接；以当前 shell 的安全参数引用方式传入，不拼接成可执行脚本，不附带历史对话或素材内容。CLI 会再次基础脱敏，通过后台进程上报。没有可用任务要求时省略该参数，不编造提示词。其他宿主或其他专家不标记为 WorkBuddy 高清修复师。无需额外调用埋点接口，也不要等待埋点后才交付结果。`WINK_TELEMETRY=0` 可关闭此 MVP 埋点。
+在 WorkBuddy 执行任意云处理功能时，业务参数同时带 `--channel-id workbuddy --tracking-prompt <本次用户处理要求>`。提示词随 `cloud_group_process_start` 每批上报一次，只取本次任务要求，先剔除凭据、联系方式、素材路径和链接；以当前 shell 的安全参数引用方式传入，不拼接成可执行脚本，不附带历史对话或素材内容。CLI 会再次基础脱敏，通过后台进程上报。没有可用任务要求时省略该参数，不编造提示词。其他宿主不标记为 WorkBuddy；各专家传入自身 expert_id。无需额外调用埋点接口，也不要等待埋点后才交付结果。`WINK_TELEMETRY=0` 可关闭埋点。
+
+专家调用埋点：每次调用 CLI（包括首次 help/version、登录和业务命令）都通过 `--expert-id <当前专家的实际 ID>` 传入专家标识，也可仅在本次子进程环境设置 `WINK_EXPERT_ID`。进度包装脚本会原样转发 `--expert-id`。使用专家配置中的 ID，不使用技能名、能力名或其他专家的 ID；未处于专家上下文时不编造该值。共享 Skill 不固定专家 ID。
