@@ -26,8 +26,8 @@ const REMOVE_WATERMARK_LEVELS = [
 const single = (name, image, video, extra = {}) => ({ name, defaultLevel: 1, levels: [{ level: 1, name, image, video }], ...extra });
 const COMMANDS = Object.freeze({
   picture_quality: { name: "画质修复", defaultLevel: 2, levels: PICTURE_QUALITY_LEVELS },
-  // 官网视频全能修复只有 Pro；算法 type 由功能标识匹配运行时配置后确定。
-  video_repair: { name: "视频全能修复", defaultLevel: 1, levels: [{ level: 1, name: "Pro", video: "123" }],
+  // 全能修复图片/视频均为 Pro；算法 type 由功能标识和媒体类型匹配运行时配置后确定。
+  video_repair: { name: "全能修复", defaultLevel: 1, levels: [{ level: 1, name: "Pro", image: "124", video: "123" }],
     configMatch: { task_type: 2, func_id: 65591 },
     rightDetail: { source: "1", touch_type: "4", function_id: "655", material_id: "65511" },
     options: ["Pro 单档，默认开启抖动检测；处理完整视频，不额外串联补帧、去水印等任务"] },

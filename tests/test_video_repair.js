@@ -58,10 +58,12 @@ async function capture(fn) {
         assert.match(taskId, /^repair-[1-9]\d*$/);
         const count = (queryCounts.get(taskId) || 0) + 1;
         queryCounts.set(taskId, count);
+        const submitted = submits[Number(taskId.slice("repair-".length)) - 1];
+        const extension = submitted.content_type === "1" ? "jpg" : "mp4";
         // Exercise a real polling transition without any paid or remote request.
         res.end(JSON.stringify({ code: 0, data: count === 1
           ? { remaining_elapsed: 10, result: { error_code: 29901, error_msg: "NOT_RESULT" } }
-          : { result: { error_code: 0, media_info_list: [{ media_data: base + "/results/" + taskId + ".mp4" }] }, url: base + "/original.mp4" } }));
+          : { result: { error_code: 0, media_info_list: [{ media_data: base + "/results/" + taskId + "." + extension }] }, url: base + "/original." + extension } }));
       } else {
         throw new Error("unexpected request (including login/download): " + url.pathname);
       }
@@ -112,17 +114,17 @@ async function capture(fn) {
       assert.strictEqual(md5Calls, 0, "no original/result MD5 comparison");
       return result;
     }
-    function assertRepairSubmit(expectedType) {
+    function assertRepairSubmit(expectedType, expectedContentType = "2", expectedFile = video) {
       assert.strictEqual(submits.length, 1);
       assert.strictEqual(submits[0].type, String(expectedType), "submit type must come from runtime config");
-      assert.strictEqual(submits[0].content_type, "2");
-      assert.strictEqual(submits[0].duration, String(Math.round(duration * 1000)));
-      assert.strictEqual(submits[0].source_url, base + "/uploads/input.mp4");
+      assert.strictEqual(submits[0].content_type, expectedContentType);
+      assert.strictEqual(submits[0].duration, expectedContentType === "2" ? String(Math.round(duration * 1000)) : undefined);
+      assert.strictEqual(submits[0].source_url, base + "/uploads/" + path.basename(expectedFile));
       assert.deepStrictEqual(JSON.parse(submits[0].type_params), { enable_shake: "1" });
       assert.deepStrictEqual(JSON.parse(submits[0].right_detail), {
         source: "1", touch_type: "4", function_id: "655", material_id: "65511",
       });
-      assert.deepStrictEqual(uploads, [video]);
+      assert.deepStrictEqual(uploads, [expectedFile]);
       assert.deepStrictEqual(calls, ["/task/ai_type_config", "/task/submit", "/task/query", "/task/query"]);
     }
     async function assertRejected(label, nextConfigs, extra = [], input = video, nextDuration = 5) {
@@ -156,6 +158,13 @@ async function capture(fn) {
     assert.strictEqual(explicitLevel.code, 0, explicitLevel.err);
     assertRepairSubmit(123);
 
+    // Website AIRepairImagePro uses the same function/rights with image content type.
+    reset([config({ type: 124, content_type: 1 })]);
+    const imageResult = await invoke([], image);
+    assert.strictEqual(imageResult.code, 0, imageResult.err);
+    assert.strictEqual(JSON.parse(imageResult.out).results[0].result_url, base + "/results/repair-1.jpg");
+    assertRepairSubmit(124, "1", image);
+
     reset();
     const batch = await invoke([], `${video},${secondVideo}`);
     assert.strictEqual(batch.code, 0, batch.err);
@@ -167,6 +176,15 @@ async function capture(fn) {
       base + "/results/repair-1.mp4", base + "/results/repair-2.mp4",
     ]);
 
+    reset([config({ type: 124, content_type: 1 }), config({ type: 123 })]);
+    const mixed = await invoke([], `${video},${image}`);
+    assert.strictEqual(mixed.code, 0, mixed.err);
+    assert.deepStrictEqual(uploads, [video, image]);
+    assert.deepStrictEqual(submits.map(item => [item.type, item.content_type]), [["123", "2"], ["124", "1"]]);
+    assert.deepStrictEqual(JSON.parse(mixed.out).results.map(item => item.result_url), [
+      base + "/results/repair-1.mp4", base + "/results/repair-2.jpg",
+    ]);
+
     for (const decoy of decoys) await assertRejected("wrong config identity", [decoy]);
     await assertRejected("unknown local processing state", [config({ is_local_process: 2 })]);
     await assertRejected("empty config", []);
@@ -175,7 +193,7 @@ async function capture(fn) {
       if (type === undefined) delete invalid.type;
       await assertRejected("missing/invalid runtime type", [invalid]);
     }
-    await assertRejected("image input", [config()], [], image);
+    await assertRejected("image input without image config", [config()], [], image);
     await assertRejected("duration below minimum", [config()], [], video, 0.5);
     await assertRejected("duration above maximum", [config()], [], video, 60.1);
     for (const extra of [["--level", "2"], ["--level", "bad"], ["--level"], ["--strength", "high"], ["--fps", "60"]]) {

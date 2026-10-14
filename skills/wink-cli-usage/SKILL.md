@@ -35,7 +35,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.6 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.7 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -58,7 +58,7 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 | 命令 | 功能 | 档位（`--level`） |
 |---|---|---|
 | `picture_quality` | 画质修复 | 1 高清 / 2 超清（默认）/ 3 人像增强 / 4 AI超清 / 5 商品图 / 6 文字图表 / 7 游戏 / 8 动漫 / 9 高糊图 / 10 演唱会 / 11 专业级修复 / 12 AIGC精修 |
-| `video_repair` | 视频全能修复 | Pro 单档，仅视频，无需 `--level`；CLI 1.11.0 起支持 |
+| `video_repair` | 全能修复 | Pro 单档，支持图片/视频，无需 `--level`；视频自 1.11.0 起、图片自 1.14.7 起支持 |
 | `resolution_repair` | 分辨率修复 | 单档位，用 `--sr-mode` 选目标分辨率 |
 | `remove_watermark` | 消除水印 | 1 自动去印（默认）/ 2 AI去水印 |
 | `denoise` | 降噪 | 单档位 |
@@ -76,9 +76,9 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 
 单档位功能可省略 `--level`，显式写 `--level 1` 也兼容。任何命令的准确档位表以 `wink-cli <命令> --help` 为准，不确定时先查帮助。
 
-视频全能修复调用 `wink-cli video_repair --input "/绝对路径/video.mp4" --json`。首次使用先检查 `wink-cli video_repair --help`；旧 CLI 不支持时需先发布并安装 1.11.0 或更高版本，不改用 `picture_quality --level 11/12`。统一命令入口要求 CLI 1.14.0 或更高版本；新连接器上线前须先发布依赖的 CLI。
+全能修复调用 `wink-cli video_repair --input "/绝对路径/media.jpg" --json`（视频也使用同一命令）。首次使用先检查 `wink-cli video_repair --help`；图片需 1.14.7 或更高版本，不改用 `picture_quality --level 11/12`。统一命令入口要求 CLI 1.14.0 或更高版本；新连接器上线前须先发布依赖的 CLI。
 
-全能修复按 `task_type=2`、`func_id=65591`、视频 `content_type=2` 匹配云处理配置，使用返回的算法 type（2026-09-17 正式环境为 123）；默认开启抖动检测。每个视频只有一个任务，不自动串联其他功能；无强度、FPS、分辨率或工作流开关参数，整段视频超过 CLI 能力检查上限时说明限制，不静默裁剪。图片智能校色不在此视频流程内。
+全能修复按 `task_type=2`、`func_id=65591`、图片 `content_type=1` 或视频 `content_type=2` 匹配云处理配置，使用返回的算法 type（官网图片 Pro 为 124、视频 Pro 为 123）；默认开启抖动检测。每份素材只有一个任务，不自动串联其他功能；无强度、FPS、分辨率或工作流开关参数，视频超过 CLI 能力检查上限时说明限制，不静默裁剪。
 
 ## 四、专属参数
 
@@ -261,7 +261,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.6 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.7 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 

@@ -75,7 +75,7 @@ ffprobe 为可选依赖。图片、常见 MP4/MOV 优先直接读取元信息；
 | 命令 | 功能 |
 |---|---|
 | `picture_quality` | 画质修复 |
-| `video_repair` | 视频全能修复（Pro 单档） |
+| `video_repair` | 全能修复（图片/视频，Pro 单档） |
 | `resolution_repair` | 分辨率修复 |
 | `remove_watermark` | 消除水印 |
 | `denoise` | 降噪 |
@@ -93,7 +93,7 @@ ffprobe 为可选依赖。图片、常见 MP4/MOV 优先直接读取元信息；
 
 自 1.11.1 起，去水印接口即使返回 `error_code=0`，未检测到水印仍按失败返回，不交付成功链接；新协议缺少算法结果链接时也不再回退到原素材地址。Skill 应逐项检查 `results[].ok`，只交付成功项的 `result_url`。
 
-视频全能修复自 1.11.0 起使用 `wink-cli video_repair --input "/absolute/path/video.mp4" --json`。按官网 Pro 功能标识从服务端配置选择算法，默认开启抖动检测，每个视频投递一个任务；不将专业级画质修复或 AIGC 精修代作全能修复，也不自动裁短超时视频。
+全能修复使用 `wink-cli video_repair --input "/absolute/path/media.jpg" --json`，命令名沿用原有的 `video_repair`。视频自 1.11.0 起支持，图片自 1.14.7 起支持。图片与视频均为 Pro 单档，按官网功能标识和媒体类型从服务端配置选择算法，每份素材投递一个任务；默认开启抖动检测，不将专业级画质修复或 AIGC 精修代作全能修复，也不自动裁短超时视频。
 
 ```sh
 ./wink-cli denoise --env pre --input "/absolute/path/photo.jpg"
