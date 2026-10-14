@@ -35,7 +35,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.5 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.6 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -191,6 +191,8 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 
 - 服务端明确拒绝（如档位不支持当前环境、媒体超限）时**直接如实转述服务端提示，不重试**——重试可能重复消耗额度。
 - **美豆不足**时，立即按下文“美豆不足时的即时提示与购买链接”告知用户，并保持原 CLI 进程等待；余额增加后由 CLI 重试，失败与超时如实报告。
+- CLI 1.14.6 起：投递成功后、任务尚未在查询端被观察到时，查询层 `10106`（任务不存在）会在最初30秒可见性窗口内沿用同一task_id重试，且受任务timeout约束；不上传或重新投递。单次网络请求可能使实际退出时间延后。算法结果内的10106、其他错误以及已正常查询后再丢失任务不按初始同步延迟重试。
+- 查询仍无法确认时，失败项包含 `task_submitted: true`、`task_state: "unknown"`、`failure_stage: "query"` 和task_id。应说明“任务已提交，但状态查询未确认”，不要把它表述为算法处理失败或自动重投。多步骤流程保留前一步成功结果并暂停后续步骤，拿到该已提交任务的真实成功结果后才可继续。
 - 网络中断或轮询超时的日志会保留 `task_id`。此时**不要重新投递**，引导用户到 [查看最近任务](https://wink.cn/editor/recent-task) 查看该任务的实际状态。
 - 参数类错误（未知选项、档位越界、路径不是绝对路径、缺失必填参数）属于本地校验失败，未上传任何文件，修正后可安全重跑。
 - 报告失败时保留简短的原始错误摘要便于定位，不要循环重试。
@@ -259,7 +261,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.5 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.6 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 

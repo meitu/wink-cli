@@ -12,6 +12,7 @@ const { authPageBaseUrl } = require("./runtime_config");
 const DEFAULT_BASE_URL = "https://precliapi-winkcut.meitu.com";
 const MAX_DOWNLOAD_BYTES = 1024 * 1024 * 1024; // 1 GiB
 const MAX_DOWNLOAD_REDIRECTS = 5;
+const TASK_VISIBILITY_GRACE_MS = 30_000;
 const SERVER_VERSION = require("../package.json").version;
 
 // /task/submit (客户端投递协议) 的字段默认值 —— 均可被 options 或 WINK_TASK_* 环境变量覆盖。
@@ -368,6 +369,24 @@ class WinkClient {
     const started = performance.now();
     options.onProgress?.({ phase: "running", taskId, elapsedMs: 0, remainingMs: null });
     const deadline = Date.now() + timeout * 1000;
+    const visibilityDeadline = Math.min(deadline, Date.now() + TASK_VISIBILITY_GRACE_MS);
+    let taskObserved = false;
+    const retryMissingTask = async () => {
+      const remaining = visibilityDeadline - Date.now();
+      if (taskObserved || remaining <= 0) {
+        const error = new WinkError(`任务已提交，但状态查询返回“任务不存在”（code=10106） · task_id=${taskId}；处理结果尚未确认，请核查最近任务，不要重新投递`);
+        error.extCode = 10106;
+        error.queryUnresolved = true;
+        options.onQuery?.({ event: "query_unresolved", task_id: taskId,
+          at: new Date().toISOString(), error_code: 10106 });
+        throw error;
+      }
+      const delay = Math.min(interval * 1000, remaining);
+      options.onQuery?.({ event: "query_retry", task_id: taskId, at: new Date().toISOString(),
+        error_code: 10106, delay_ms: delay,
+        elapsed_ms: Math.max(0, Math.round(performance.now() - started)) });
+      await new Promise(resolve => setTimeout(resolve, delay));
+    };
     while (true) {
       const queryStarted = performance.now();
       const queryStartedAt = new Date().toISOString();
@@ -379,6 +398,10 @@ class WinkClient {
         options.onQuery?.({ event: "query_error", task_id: taskId, at: new Date().toISOString(),
           duration_ms: Math.round(performance.now() - queryStarted),
           http_status: error.httpStatus ?? null, error_code: error.extCode ?? null });
+        if (Number(error.extCode) === 10106) {
+          await retryMissingTask();
+          continue;
+        }
         throw error;
       }
       const taskData = dataObject(queried);
@@ -390,7 +413,14 @@ class WinkClient {
         status: taskData.status ?? null, error_code: state.error_code ?? null,
         result_error_code: taskData.result?.error_code ?? null,
         top_error_code: taskData.error_code ?? null });
+      // Only query-level "not found" can be transient after an accepted submit.
+      // A result.error_code is an algorithm result and must not be retried here.
+      if (Number(queried.code) === 10106 || Number(taskData.error_code) === 10106) {
+        await retryMissingTask();
+        continue;
+      }
       if (!responseOk(queried)) return queried;
+      taskObserved = true;
       if (state.phase === "finish") {
         options.onQuery?.({ event: "task_success", task_id: taskId, at: new Date().toISOString(),
           elapsed_ms: Math.round(performance.now() - started) });

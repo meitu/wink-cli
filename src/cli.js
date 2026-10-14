@@ -728,6 +728,7 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
       const reason = `${error.message}${taskId ? ` · task_id=${taskId}` : ""}`;
       fileProgress.fail(reason);
       results.push({ file, ok: false, reason, ...(taskId ? { task_id: taskId } : {}),
+        ...(error.queryUnresolved ? { task_submitted: true, task_state: "unknown", failure_stage: "query" } : {}),
         ...(error.extCode ? { error_code: error.extCode } : {}) });
     }
   }
