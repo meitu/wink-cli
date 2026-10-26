@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { WinkError } = require("./wink_client");
+const { validateSourceFlags } = require("./source_context");
 const { prepareBeautyOptions } = require("./ai_beauty");
 // CF 715632845 v5 (2026-09-10). func_type 是限免标识，不是 right_detail.function_id。
 const PICTURE_QUALITY_LEVELS = [
@@ -56,7 +57,7 @@ const COMMANDS = Object.freeze({
 
 function prepareTool(command, flags) {
   const params = {}, submit = {};
-  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json", "progress-json", "channel-id", "client-model", "expert-id"]);
+  const allowed = new Set(["env", "level", "input", "output", "api-key", "force", "interval", "timeout", "base-url", "relogin", "json", "progress-json", "channel-id", "client-model", "expert-id", "source-name", "source-type"]);
   allowed.add("tracking-prompt");
   if (flags["tracking-prompt"] !== undefined &&
       (typeof flags["tracking-prompt"] !== "string" || !flags["tracking-prompt"].trim())) {
@@ -66,10 +67,7 @@ function prepareTool(command, flags) {
   if (flags["channel-id"] !== undefined) {
     if (typeof flags["channel-id"] !== "string" || !flags["channel-id"].trim()) throw new WinkError("--channel-id 需要非空渠道值");
   }
-  if (flags["expert-id"] !== undefined &&
-      (typeof flags["expert-id"] !== "string" || !flags["expert-id"].trim())) {
-    throw new WinkError("--expert-id 需要非空专家标识");
-  }
+  validateSourceFlags(flags, WinkError);
   if (flags["client-model"] !== undefined) {
     if (typeof flags["client-model"] !== "string" || !flags["client-model"].trim()) throw new WinkError("--client-model 需要非空机型值");
   }

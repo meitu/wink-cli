@@ -35,7 +35,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.7 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.8 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -97,6 +97,8 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 | `ai_beauty` | `--hair-silky`、`--beauty-double-chin` | 发质柔顺、去双下巴，默认关闭，可单独使用或与风格组合 |
 | `old_photo` | `--variant <v>` | `standard`（默认）/ `quality` / `shared` |
 | `old_photo` | `--workflow-params <json>` | 覆盖修复开关，JSON 或 `@文件路径` |
+
+老照片修复默认显式使用 `--variant standard`（type=122）；只有用户明确选择质量版时才用 `quality`（type=161），不因示例、泛化的“高清”目标而自动升级，也不自动选择含义未确认的 `shared`。当前环境配置缺少某个 type 只说明本次所选版本未通过能力校验，不等于整个老照片修复不可用或账号没有权限。标准版是否可用也须由本次 CLI 校验确认；不绕过校验、不自动切换环境。用户明确选择的版本不可用时，先询问是否接受其他版本，不静默改版或重复投递。
 
 `--translate-params`、`--workflow-params` 可直接传 JSON，也可传 `@/绝对路径/config.json` 从文件读取。
 
@@ -215,8 +217,8 @@ wink-cli picture_quality --level 2 --input "/abs/path/photo.jpg" --json
 # 视频超分到 4K
 wink-cli resolution_repair --sr-mode 3 --input "/abs/path/video.mp4" --json
 
-# 老照片修复并超分
-wink-cli old_photo --variant quality --input "/abs/path/old.jpg" --json
+# 老照片修复（默认标准版；质量版仅在用户明确选择时使用）
+wink-cli old_photo --variant standard --input "/abs/path/old.jpg" --json
 
 # 去水印（AI 去水印档）
 wink-cli remove_watermark --level 2 --input "/abs/path/marked.jpg" --json
@@ -261,7 +263,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.7 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.8 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 
@@ -283,4 +285,4 @@ wink-cli picture_quality --help
 
 在 WorkBuddy 执行任意云处理功能时，业务参数同时带 `--channel-id workbuddy --tracking-prompt <本次用户处理要求>`。提示词随 `cloud_group_process_start` 每批上报一次，只取本次任务要求，先剔除凭据、联系方式、素材路径和链接；以当前 shell 的安全参数引用方式传入，不拼接成可执行脚本，不附带历史对话或素材内容。CLI 会再次基础脱敏，通过后台进程上报。没有可用任务要求时省略该参数，不编造提示词。其他宿主不标记为 WorkBuddy；各专家传入自身 expert_id。无需额外调用埋点接口，也不要等待埋点后才交付结果。`WINK_TELEMETRY=0` 可关闭埋点。
 
-专家调用埋点：每次调用 CLI（包括首次 help/version、登录和业务命令）都通过 `--expert-id <当前专家的实际 ID>` 传入专家标识，也可仅在本次子进程环境设置 `WINK_EXPERT_ID`。进度包装脚本会原样转发 `--expert-id`。使用专家配置中的 ID，不使用技能名、能力名或其他专家的 ID；未处于专家上下文时不编造该值。共享 Skill 不固定专家 ID。
+调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink CLI 使用说明 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。

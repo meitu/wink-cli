@@ -105,8 +105,9 @@ function dispatch(packet) {
   child.stdin.end(JSON.stringify(packet));
   child.unref();
 }
+const { resolveSourceContext } = require("./source_context");
 const NOOP = Object.freeze({ emit() {}, firstRun() {}, bind() {}, authSuccess() {}, enabled: false });
-function createTracking({ client, source, expertId, env = process.env, homeDir = os.homedir(), send = dispatch } = {}) {
+function createTracking({ client, source, expertId, sourceName, sourceType, env = process.env, homeDir = os.homedir(), send = dispatch } = {}) {
   source = source || env.WINK_TASK_CHANNEL_ID || detectAgentChannelId(env, [process.execPath, process.argv[1]]);
   if (source !== "workbuddy" || env.WINK_TELEMETRY === "0" || !client) return NOOP;
   try {
@@ -114,7 +115,7 @@ function createTracking({ client, source, expertId, env = process.env, homeDir =
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const gid = resolveGnumSync({ env, homeDir });
     const model = detectCpuModel();
-    const resolvedExpertId = optionalText(expertId) || optionalText(env.WINK_EXPERT_ID);
+    const sourceContext = resolveSourceContext({ expertId, sourceName, sourceType, env });
     const carrier = optionalText(env.WINK_TELEMETRY_CARRIER);
     const network = optionalText(env.WINK_TELEMETRY_NETWORK);
     const operatingSystem = detectOperatingSystem({ env });
@@ -134,7 +135,7 @@ function createTracking({ client, source, expertId, env = process.env, homeDir =
         const time = Date.now();
         const record = { event_id: event,
           gid, uid: userId, channel: source, time, carrier, network, model, ...operatingSystem,
-          app_version: VERSION, cli_version: VERSION, expert_id: resolvedExpertId, params: {} };
+          app_version: VERSION, cli_version: VERSION, ...sourceContext, params: {} };
         for (const key of FIELDS[event]) {
           const value = fields[key];
           record.params[key] = ["prompt", "error_message"].includes(key) ? redactPrompt(value) :

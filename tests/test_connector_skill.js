@@ -43,7 +43,8 @@ try {
   assert.strictEqual(structured.status, 0, structured.stderr);
   for (const args of [
     ["skill", "--json", "--expert-id", "wink-quality-restoration"],
-    ["--expert-id=wink-quality-restoration", "skill", "--json"],
+    ["--expert-id=wink-quality-restoration", "--source-name=画质修复", "--source-type=expert", "skill", "--json"],
+    ["skill", "--json", "--source-name", "画质修复", "--source-type", "skill"],
     ["--expert-id", "skill", "skill", "--json"],
   ]) {
     const result = run(args);
@@ -51,6 +52,8 @@ try {
     assert.strictEqual(result.stdout, structured.stdout);
   }
   for (const args of [
+    ["skill", "--source-type", "Expert"], ["skill", "--source-type", "unknown"],
+    ["skill", "--source-name="], ["skill", "--source-type"],
     ["skill", "--expert-id"], ["skill", "--expert-id="],
     ["skill", "--expert-id", "wink-quality-restoration", "--json", "--json"],
   ]) {

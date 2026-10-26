@@ -127,6 +127,18 @@ async function capture(fn) {
     configs = [{ type: 122, content_type: 1 }]; uploads = []; calls = [];
     const unavailable = await capture(() => main(["old_photo", "--variant", "shared", "--input", image, "--output", dir, "--api-key", "offline", "--json"], services));
     assert.strictEqual(unavailable.code, 3); assert.match(unavailable.err, /type=164/); assert.deepStrictEqual(uploads, []); assert.deepStrictEqual(calls, ["/task/ai_type_config"]);
+    // A missing quality variant does not make the standard old-photo variant unavailable.
+    uploads = []; calls = [];
+    const qualityUnavailable = await capture(() => main(["old_photo", "--variant", "quality", "--input", image, "--api-key", "offline", "--json"], services));
+    assert.strictEqual(qualityUnavailable.code, 3);
+    assert.match(qualityUnavailable.err, /type=161/);
+    assert.deepStrictEqual(uploads, [], "quality config rejection happens before upload");
+    assert.deepStrictEqual(calls, ["/task/ai_type_config"], "missing quality must not submit or auto-fallback");
+    uploads = []; calls = [];
+    const standard = await capture(() => main(["old_photo", "--input", image, "--api-key", "offline", "--json"], services));
+    assert.strictEqual(standard.code, 0, standard.err);
+    assert.strictEqual(submitted.type, "122", "unspecified old-photo variant must remain standard");
+    assert.strictEqual(uploads.length, 1);
     for (const [command, flags, error] of [
       ["ai_translation", {}, /target-language/], ["ai_beauty", {}, /style/], ["color_unite", {}, /reference/],
       ["cartoon", { style: "x" }, /formula-type/], ["video_frame", { fps: "60", factor: "2" }, /不能同时/],
@@ -147,3 +159,7 @@ async function capture(fn) {
     else process.env.WINK_TASK_GNUM = savedGnum;
     await new Promise(resolve => server.close(resolve)); fs.rmSync(dir, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+assert.throws(() => prepareTool("picture_quality", {"source-type":"Expert"}), /source-type/);
+assert.throws(() => prepareTool("picture_quality", {"source-name":" "}), /source-name/);
+assert.deepStrictEqual(prepareTool("picture_quality", {"source-type":"skill","source-name":"画质修复"}), prepareTool("picture_quality", {}));

@@ -83,7 +83,7 @@ const { createRechargeHandler } = require("../src/beans");
     const packets = [];
     const client = new WinkClient({ baseUrl: "https://example.invalid", apiKey: "test-key" });
     const opts = { client, source: "workbuddy", homeDir: root,
-      env: { WINK_TASK_GNUM: "9223372036854775807", WINK_TASK_CLIENT_MODEL: "Test CPU", WINK_EXPERT_ID: "wink-quality-restoration" },
+      env: { WINK_TASK_GNUM: "9223372036854775807", WINK_TASK_CLIENT_MODEL: "Test CPU", WINK_EXPERT_ID: "expert_wink-quality-restoration", WINK_SOURCE_NAME: "画质修复专家", WINK_SOURCE_TYPE: "expert" },
       send: p => packets.push(p) };
     const tracker = createTracking(opts);
     assert.ok(tracker.enabled);
@@ -107,19 +107,25 @@ const { createRechargeHandler } = require("../src/beans");
       assert.ok(Number.isSafeInteger(record.time));
       assert.strictEqual(record.model, expectedCpuModel);
       assert.strictEqual(record.expert_id, "wink-quality-restoration");
+      assert.strictEqual(record.source_name, "画质修复专家");
+      assert.strictEqual(record.source_type, "expert");
       assert.strictEqual(record.carrier, null);
       assert.strictEqual(record.network, null);
     }
     const extraPackets = [];
-    createTracking({ ...opts, expertId: " wink-photo-quality-enhance ", clientModel: "Phone model must not override CPU",
+    createTracking({ ...opts, expertId: " skill_wink-photo-quality-enhance ", sourceName: "图片画质增强", sourceType: "skill", clientModel: "Phone model must not override CPU",
       env: { ...opts.env, WINK_TELEMETRY_CARRIER: "中国移动", WINK_TELEMETRY_NETWORK: "WiFi" },
       send: p => extraPackets.push(p) }).emit("cloud_group_process_start");
     assert.strictEqual(extraPackets[0].events[0].model, expectedCpuModel);
     assert.strictEqual(extraPackets[0].events[0].expert_id, "wink-photo-quality-enhance");
+    assert.strictEqual(extraPackets[0].events[0].source_name, "图片画质增强");
+    assert.strictEqual(extraPackets[0].events[0].source_type, "skill");
     const missingExpert = [];
-    createTracking({ ...opts, env: { ...opts.env, WINK_EXPERT_ID: "  " },
+    createTracking({ ...opts, env: { ...opts.env, WINK_EXPERT_ID: "  ", WINK_SOURCE_NAME: " ", WINK_SOURCE_TYPE: "INVALID" },
       send: p => missingExpert.push(p) }).emit("auth_success");
     assert.strictEqual(missingExpert[0].events[0].expert_id, null);
+    assert.strictEqual(missingExpert[0].events[0].source_name, null);
+    assert.strictEqual(missingExpert[0].events[0].source_type, null);
     assert.strictEqual(extraPackets[0].events[0].carrier, "中国移动");
     assert.strictEqual(extraPackets[0].events[0].network, "WiFi");
     const mobilePackets = [];
@@ -244,6 +250,7 @@ const { createRechargeHandler } = require("../src/beans");
     // Exercise CLI flag parsing through the detached HTTP report worker.
     const beforeCli = requests.length;
     const cliChild = spawn(process.execPath, ["src/cli.js", "denoise", "--help", "--expert-id", "wink-quality-restoration",
+      "--source-name", "画质修复专家", "--source-type", "expert",
       "--channel-id", "workbuddy", "--base-url", baseUrl], {
       cwd: path.join(__dirname, ".."), stdio: "ignore",
       env: { ...process.env, HOME: path.join(root, "cli-home"), WINK_TELEMETRY: "1", WINK_EXPERT_ID: "other-expert" },
@@ -258,6 +265,8 @@ const { createRechargeHandler } = require("../src/beans");
     assert.strictEqual(requests.length, beforeCli + 1);
     const cliEvents = JSON.parse(new URLSearchParams(requests[beforeCli].body).get("events"));
     assert.strictEqual(cliEvents[0].expert_id, "wink-quality-restoration");
+    assert.strictEqual(cliEvents[0].source_name, "画质修复专家");
+    assert.strictEqual(cliEvents[0].source_type, "expert");
 
     // A server that never responds must not keep the actual CLI parent alive.
     mode = "hang";

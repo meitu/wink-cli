@@ -27,6 +27,7 @@ const { createRechargeHandler } = require("./beans");
 const { writeUid } = require("./user_identity");
 const { randomUUID } = require("crypto");
 const { createTracking } = require("./tracking");
+const { SOURCE_FLAGS, validateSourceFlags } = require("./source_context");
 const { fetchBeautyStyles, selectBeautyStyle, buildBeautySubmission, formatBeautyStyles } = require("./ai_beauty");
 const {
   WinkClient,
@@ -84,7 +85,9 @@ const MAIN_HELP = [
   "  wink-cli [全局选项] [功能命令] [工具选项]",
   "",
   "全局选项:",
-  "  --expert-id <id>          调用专家标识；优先于 WINK_EXPERT_ID，未提供时埋点为 null",
+  "  --expert-id <id>          入口原始 ID（不加类型前缀）；优先于 WINK_EXPERT_ID",
+  "  --source-name <name>       来源完整中文展示名称；优先于 WINK_SOURCE_NAME",
+  "  --source-type <type>       expert 或 skill；优先于 WINK_SOURCE_TYPE",
   "  -h, --help                显示帮助（本页或子命令帮助）",
   "",
   "功能命令:",
@@ -148,7 +151,9 @@ function toolHelp(command) {
     "  --json                       以 JSON 输出结果汇总（进度信息走 stderr）",
     "  --progress-json              stderr 输出逐行 JSON 进度事件（其他诊断仍为文本）",
     "  --channel-id <id>            投递渠道 client_channel_id；默认按 Agent 环境推断（workbuddy/cursor/claude/codex/cli）",
-    "  --expert-id <id>             调用专家标识；优先于 WINK_EXPERT_ID，未提供时埋点为 null",
+    "  --expert-id <id>             入口原始 ID（不加类型前缀）；优先于 WINK_EXPERT_ID",
+    "  --source-name <name>         来源完整中文展示名称；优先于 WINK_SOURCE_NAME",
+    "  --source-type <type>         expert 或 skill；优先于 WINK_SOURCE_TYPE",
     "  --tracking-prompt <text>      WorkBuddy 云处理埋点提示词（可选，基础脱敏后上报）",
     "  --client-model <name>        机型 client_model；默认自动采集（如 Apple M4 / Windows CPU / 安卓机型名）",
     "  -h, --help                   显示本帮助",
@@ -813,10 +818,7 @@ async function execute(argv, services = {}) {
 // Track every cloud tool; read-only management commands stay outside tracking.
 async function main(argv, services = {}) {
   const { _, flags } = parseArgv(argv);
-  if (flags["expert-id"] !== undefined &&
-      (typeof flags["expert-id"] !== "string" || !flags["expert-id"].trim())) {
-    throw new Error("--expert-id 需要非空专家标识");
-  }
+  validateSourceFlags(flags);
   const eligible = !_[0] || ["help", "version", "login", "auth"].includes(_[0]) || Object.hasOwn(COMMANDS, _[0]);
   let tracking = services.tracking;
   if (!tracking && eligible && !services.createClient) {
@@ -824,7 +826,8 @@ async function main(argv, services = {}) {
       const { baseUrl } = resolveEnvironment(flags);
       tracking = createTracking({ client: new WinkClient({ baseUrl,
         apiKey: optionValue(flags, "api-key") || process.env.WINK_CLI_API_KEY || readCredential(baseUrl) }),
-        source: optionValue(flags, "channel-id"), expertId: optionValue(flags, "expert-id") });
+        source: optionValue(flags, "channel-id"), expertId: optionValue(flags, "expert-id"),
+        sourceName: optionValue(flags, "source-name"), sourceType: optionValue(flags, "source-type") });
     } catch (_) { /* Optional analytics cannot block CLI startup. */ }
   }
   // Consume the global tracking option before strict subcommand parsers run.
@@ -832,8 +835,8 @@ async function main(argv, services = {}) {
   const commandArgv = [];
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--") { commandArgv.push(...argv.slice(i)); break; }
-    if (argv[i] === "--expert-id") { i += 1; continue; }
-    if (argv[i].startsWith("--expert-id=")) continue;
+    if (SOURCE_FLAGS.some(key => argv[i] === `--${key}`)) { i += 1; continue; }
+    if (SOURCE_FLAGS.some(key => argv[i].startsWith(`--${key}=`))) continue;
     commandArgv.push(argv[i]);
   }
   const code = await execute(commandArgv, { ...services, tracking });
