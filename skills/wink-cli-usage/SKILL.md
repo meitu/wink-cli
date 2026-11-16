@@ -1,16 +1,19 @@
 ---
 name: wink-cli-usage
-display_name: Wink CLI 使用说明
+description: Process images and videos with Wink CLI, including numbered capability selection and user-ordered workflows with verified intermediate results.
+display_name: Wink 图片视频全能处理
 display_name_en: Wink CLI Usage
-description_zh: 指导 AI 正确调用 wink-cli 命令行完成图片与视频云处理：命令与档位选择、参数含义、输入输出规范、结构化结果解析、退出码判定与失败恢复。
-description_en: Teaches the AI how to drive the wink-cli command line for cloud image and video processing — command and level selection, parameters, input/output rules, JSON result parsing, exit-code handling and failure recovery.
+description_zh: 指导 AI 调用 Wink CLI 处理图片和视频，展示完整编号功能菜单，支持用户自定义处理顺序、逐步衔接与失败恢复。
+description_en: Use Wink CLI to process images and videos, offer a numbered menu, and execute user-ordered workflows with verified intermediate results and failure recovery.
 category: 效率工具
 author: 美图
 ---
 
-# Wink CLI 使用说明
+# Wink 图片视频全能处理
 
 本说明由当前安装的 wink-cli 随包提供，可供 WorkBuddy 的「Wink」连接器以及其他 Agent 调用。通过 `wink-cli skill` 读取时，Skill 版本自动取自 CLI 的 package.json，与 CLI 一起升级。每次新任务先读取当前文档；CLI 更新后重新读取，不沿用旧会话中的参数表。Windows 可使用 `wink-cli.cmd skill`。
+
+仅要求安装、检查环境或介绍功能时，不提前登录、上传或提交任务。豆包等宿主必须实际提供终端执行、附件落地和联网能力才能使用本 CLI；仅上传本文不会给普通聊天增加这些能力。具备终端且能持续读取输出的宿主采用下文的直接执行模式，不套用 WorkBuddy 专用包装协议。
 
 CLI 可以独立安装并完成授权登录；WorkBuddy 也可通过连接器安装与认证。本文说明命令与档位选择、参数、结果判定和失败处理。CLI 帮助是实际支持参数的最终依据。
 
@@ -35,7 +38,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.8 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.9 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -79,6 +82,53 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 全能修复调用 `wink-cli video_repair --input "/绝对路径/media.jpg" --json`（视频也使用同一命令）。首次使用先检查 `wink-cli video_repair --help`；图片需 1.14.7 或更高版本，不改用 `picture_quality --level 11/12`。统一命令入口要求 CLI 1.14.0 或更高版本；新连接器上线前须先发布依赖的 CLI。
 
 全能修复按 `task_type=2`、`func_id=65591`、图片 `content_type=1` 或视频 `content_type=2` 匹配云处理配置，使用返回的算法 type（官网图片 Pro 为 124、视频 Pro 为 123）；默认开启抖动检测。每份素材只有一个任务，不自动串联其他功能；无强度、FPS、分辨率或工作流开关参数，视频超过 CLI 能力检查上限时说明限制，不静默裁剪。
+
+### 完整编号菜单与用户自定义编排
+
+直接使用本通用 Skill 时，每次新的素材处理任务先完整展示以下固定编号菜单，标明图片 / 视频适用范围，并邀请用户单选或按顺序选择多个功能。管理、安装、授权、纯咨询不强制选择菜单。后续参数补充、进度和恢复不重复刷菜单。若调用专家已有自己的菜单和开放范围，沿用专家的编号、来源和限制，不用本表新增专家未开放的功能。
+
+| 编号 | 向用户展示的功能 | 命令与媒体范围 |
+|---|---|---|
+| 1 | 画质修复 | `picture_quality`，图片 / 视频；部分档位仅图片 |
+| 2 | 分辨率放大 | `resolution_repair`，图片 / 视频 |
+| 3 | 夜景提升 | `night_scene`，图片 / 视频 |
+| 4 | 人像美容 | `ai_beauty`，图片 / 视频；风格及附加效果按用户选择 |
+| 5 | 水印 / Logo 消除 | `remove_watermark`，图片 / 视频 |
+| 6 | 降噪 | `denoise`，图片 / 视频画面噪点 |
+| 7 | 视频补帧 | `video_frame`，仅视频 |
+| 8 | 全能修复 | `video_repair`，图片 / 视频，Pro 单档 |
+| 9 | 色彩增强 | `color_enhance`，图片 / 视频 |
+| 10 | 视频去雾 | `video_defogging`，仅视频 |
+| 11 | 老照片修复 | `old_photo`，仅图片 |
+| 12 | 色调统一 | `color_unite`，图片 / 视频，必须提供参考图片 |
+| 13 | AI 动漫 | `cartoon`，按当前帮助核对媒体范围和真实风格物料 |
+| 14 | AI 翻译 | `ai_translation`，仅视频，必须指定目标语言 |
+
+对用户展示中文功能和适用范围即可，不要求用户理解命令或物料 ID。功能列出不代表所有环境、账号权益和档位均可用；执行前仍需 CLI 校验。
+
+引导示例：“请回复一个编号，或按处理顺序回复多个编号，例如 6 → 1 → 2，表示先降噪，再修复画质，最后放大分辨率。不确定顺序时，我可以给你建议。”
+
+- 接受编号链或功能名称链。保留用户明确指定的顺序，不按编号排序、不去重、不增加或替换步骤；用户明确重复某一步时保留，并说明会分别创建云任务。
+- 已明确功能与顺序时，展示菜单并标记已选步骤，直接沿用用户选择，不重复询问。只列多个编号却未表明顺序时，先问清顺序，或提出建议供确认，不能把建议当授权。
+- 只澄清无效编号、媒体不适用、档位及必填参数。例如图片不能补帧，色调统一需要参考图，美颜需要真实风格选择；不要静默删掉不适用步骤。
+- 提交前说明顺序、各步档位 / 目标、素材数量及每步均可能消耗额度。介绍菜单不是处理全部功能的授权，已明确授权的链不反复确认。
+
+### 有序多步执行与中间结果
+
+1. 每份素材独立记录原路径、选定步骤、实际参数、当前输入、各步最终 JSON、任务 ID（若返回）和成功链接。先核对整条链的媒体兼容性；混合素材需要分组或跳过某步时先问清范围。同一素材的依赖步骤串行执行。
+2. 第一步输入原素材。仅当上一步最终 JSON 的 `results[]` 中，唯一匹配该步实际输入的条目 `ok === true` 且有有效 `result_url`，才能继续。不要只看批次 `ok`、进度文字或上传地址；部分素材失败时，成功素材可按原授权继续。
+3. CLI 的 `--input` 接收本地绝对路径，不接收结果 URL。使用同包工具下载成功的中间结果；命令中的路径先替换为真实绝对路径：
+
+   ```sh
+   node "<CLI安装目录>/skills/wink-cli-usage/scripts/download_intermediate.cjs" --result-json "<上一步最终汇总JSON绝对路径>" --file "<上一步实际输入绝对路径>" --directory "<本次独立临时目录绝对路径>"
+   ```
+
+   工具只下载唯一匹配的成功项，核验 HTTP 响应、长度和媒体文件头，默认大小上限 2 GiB，输出 `{ "file": "新文件绝对路径", "bytes": 数值 }`。仅在实际需要且用户同意时通过 `--max-bytes` 调整下载上限，不重投云任务。下一步必须用返回的 `file` 作为 `--input`，并重新接受 CLI 媒体校验。不要把原素材重用成中间结果，也不要改写结果签名链接。没有工具或下载能力时停止衔接并交付上一步结果，不重新投递上一步。
+4. 直接模式为每步保留独立最终 JSON，并持续读取该进程 stderr 进度；stdout 可写入该步独立 JSON 文件，但不能把 stdout/stderr 都隐藏到结束才读取。WorkBuddy 包装模式在该步 `__DONE__` 后读取 `<日志路径>.stdout`，中间步骤允许读取汇总并下载衔接，不按单步的“立即交付后结束”中断整条链。包装脚本参数在 `--log` 后直接写业务子命令，不加 `wink-cli`、`node` 或 `cli.js` 前缀。
+5. 逐步展示“步骤 N / 总步数 · 功能 · 原素材名”及真实进度。失败、状态未知、下载失败或下一步输入不合规时，停止该素材剩余依赖步骤；保留最后成功结果和已知任务 ID，不自动重新投递、不退回原素材继续，不宣称整条链完成。其他独立素材可继续。
+6. 最终按原素材列出实际完成顺序和最后成功链接；中途阻断时注明失败及未执行步骤。只为后续衔接下载中间文件，最终结果默认仍交付链接。清理时仅删除本轮记录的临时中间文件，不覆盖或删除原始素材。
+
+用户修改编排时只调整尚未执行的步骤；已完成步骤如实说明，不重新执行已完成的收费任务。本节多步衔接规则优先于下文单步交付的“不要下载”“立即结束”规则，不扩大任何专家的业务范围。
 
 ## 四、专属参数
 
@@ -147,7 +197,7 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 
 ### 结果交付与链接时效
 
-- **CLI 不再自动下载结果文件**。处理成功后，把每个成功文件的 `result_url` 展示为“查看优化后素材”超链接，由用户自行下载，不要尝试在本地落盘。
+- **CLI 不再自动下载最终结果文件**。处理成功后，把每个成功文件的 `result_url` 展示为“查看优化后素材”超链接。仅用户已选择的多步链允许下载用于下一步输入的中间结果，按上文工具核验；最终结果默认由用户自行下载。
 - **下载链接约 3 小时过期**，交付时必须提醒用户尽快下载。
 - 任务提交后到过期前，用户都可以在 [查看最近任务](https://wink.cn/editor/recent-task) 查看已提交的任务并获取结果；**任务 7 天后过期**，到期后无法取回。
 - 交付时使用下文“WorkBuddy 链接展示”的统一模板，结果标题为“查看优化后素材”，任务入口标题为“查看最近任务”。
@@ -263,7 +313,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.8 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.9 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 
@@ -285,4 +335,4 @@ wink-cli picture_quality --help
 
 在 WorkBuddy 执行任意云处理功能时，业务参数同时带 `--channel-id workbuddy --tracking-prompt <本次用户处理要求>`。提示词随 `cloud_group_process_start` 每批上报一次，只取本次任务要求，先剔除凭据、联系方式、素材路径和链接；以当前 shell 的安全参数引用方式传入，不拼接成可执行脚本，不附带历史对话或素材内容。CLI 会再次基础脱敏，通过后台进程上报。没有可用任务要求时省略该参数，不编造提示词。其他宿主不标记为 WorkBuddy；各专家传入自身 expert_id。无需额外调用埋点接口，也不要等待埋点后才交付结果。`WINK_TELEMETRY=0` 可关闭埋点。
 
-调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink CLI 使用说明 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。
+调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink 图片视频全能处理 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。

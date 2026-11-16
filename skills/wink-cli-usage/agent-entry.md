@@ -1,9 +1,9 @@
 ---
 name: wink-cli-usage
-description: 使用已安装的 Wink CLI 对图片或视频做云端画质修复、超分、美颜、降噪和去水印时，先读取当前 CLI 的完整使用说明与真实支持参数。
+description: 使用 Wink CLI 处理图片或视频，支持功能编号选择和用户自定义多步顺序；每次先读取当前 CLI 的完整说明与真实参数。
 ---
 
-# Wink CLI 云处理
+# Wink 图片视频全能处理
 
 每次新的云处理任务，先执行下面的只读命令并阅读完整输出。命令使用本次安装的 Node.js 和 CLI 绝对路径，避免误用 PATH 中的旧版本。
 
@@ -13,9 +13,11 @@ description: 使用已安装的 Wink CLI 对图片或视频做云端画质修复
 
 完整使用说明随 CLI 发布；CLI 升级后重新读取，不沿用旧会话里的参数表。此命令不登录、不联网、不上传素材，也不消耗美豆。需要结构化内容与版本信息时，在命令末尾加 `--json` 并阅读 `content`。
 
+实际处理时按完整说明展示固定编号菜单，允许用户单选或指定有序功能链；已明确的目标和顺序直接沿用，不自动重排、增加或去重。专家已有菜单与开放范围时遵循专家配置。多步链中，上一步唯一匹配的成功结果必须先通过CLI 安装包内的 `skills/wink-cli-usage/scripts/download_intermediate.cjs` 下载为新的本地输入，才能运行下一步；失败或状态未知时停止依赖步骤，不重复投递。中间步骤按完整说明读取汇总并衔接，最终结果仍交付链接。安装 / 状态检查不提前登录、上传或创建任务。
+
 按返回的说明检查环境、登录状态、功能与档位，再执行用户授权的处理。若业务命令 `wink-cli --version` 与读取的 CLI 版本不一致，先修正 PATH 或使用该安装目录中的 CLI。不要用旧版业务命令配合新版说明。
 
-命令不存在、退出失败或正文缺失时，停止业务投递并说明需要重新运行 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.8 install` 修复安装；不要凭记忆猜测参数。排障时可在上述读取命令末尾加 `--reference http-api` 获取同版本参考。
+命令不存在、退出失败或正文缺失时，停止业务投递并说明需要重新运行 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.9 install` 修复安装；不要凭记忆猜测参数。排障时可在上述读取命令末尾加 `--reference http-api` 获取同版本参考。
 
 登录由 CLI 的正常流程处理；WorkBuddy 中也可通过连接器完成授权。读取 Skill 不代表用户已授权收费处理。只交付 CLI 判定成功的真实结果链接，显示为“查看优化后素材”，最近任务入口显示为“查看最近任务”。不要回显凭据或将原素材链接作为成功结果。
 
@@ -26,6 +28,6 @@ description: 使用已安装的 Wink CLI 对图片或视频做云端画质修复
 
 进度只采用 CLI 实际返回值，不自行倒计时或推算处理百分比。接口尚未给出具体阶段时，不猜测为“加水印中”。
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.8 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.9 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
-调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink CLI 使用说明 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。
+调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink 图片视频全能处理 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。

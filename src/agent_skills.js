@@ -125,7 +125,7 @@ function installTarget(target, { content, version }) {
     const marker = { schema: 1, owner: "wink-cli", skill: SKILL_NAME, cli_version: version, files: { "SKILL.md": digest(content) } };
     let userMeta = old.userMeta;
     if (target.agents.includes("workbuddy") || userMeta) {
-      userMeta = { ...userMeta, name: "Wink CLI 使用说明", source: "userImport", version };
+      userMeta = { ...userMeta, name: "Wink 图片视频全能处理", source: "userImport", version };
       if (!Number.isFinite(userMeta.installedAt) || userMeta.installedAt <= 0) userMeta.installedAt = Date.now();
     }
     if (old.exists && JSON.stringify(old.marker) === JSON.stringify(marker) &&
