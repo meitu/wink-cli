@@ -9,7 +9,8 @@ const { openBrowser } = require("../src/open_browser");
 
 // Exercise the real login loop without launching a browser, making HTTP calls,
 // writing credentials, or waiting five minutes.
-async function login({ platform = "darwin", autoOpen = true, failOpen = false, timeout = false } = {}) {
+async function login({ platform = "darwin", autoOpen = true, failOpen = false, timeout = false,
+  channelArgs = [], expectedChannel } = {}) {
   const code = "abcdefghijklmnopqrstuvwx01234567";
   const url = `https://wink.cn/init/auth?once_code=${code}&client_id=1189857724`;
   const events = [], writes = [], queries = [], launches = [];
@@ -33,7 +34,10 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
       if (name === "./wink_client") return {
         WinkClient: class {
           withApiKey() { return this; }
-          authUrl() { events.push("auth-url"); return { auth_url: url, once_code: code }; }
+          authUrl(onceCode, clientId, channel) {
+            assert.strictEqual(channel, expectedChannel, "management login passes the requested channel");
+            events.push("auth-url"); return { auth_url: url, once_code: code };
+          }
           async exchange(onceCode) {
             events.push("exchange"); queries.push(onceCode);
             if (timeout || queries.length === 1) throw new Error("pending authorization");
@@ -69,7 +73,7 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/management_commands.js"), "utf8"), context);
   const trackingEvents = [];
-  const result = await context.module.exports.cmdLogin(autoOpen ? ["--open-browser"] : [], { tracking: {
+  const result = await context.module.exports.cmdLogin([...(autoOpen ? ["--open-browser"] : []), ...channelArgs], { tracking: {
     emit: (event, fields) => trackingEvents.push({ event, fields }),
     authSuccess: () => trackingEvents.push({ event: "auth_success" }),
   } });
@@ -98,5 +102,7 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
   await login({ autoOpen: false }); // Panel-owned authentication keeps its existing behavior.
   await login({ failOpen: true });
   await login({ timeout: true });
+  await login({ channelArgs: ["--channel-id", "workbuddy"], expectedChannel: "workbuddy" });
+  await login({ channelArgs: ["--channel-id=codex"], expectedChannel: "codex" });
   console.log("connector login: non-TTY browser opening, panel compatibility, same-code polling, fallback and timeout passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

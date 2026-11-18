@@ -79,12 +79,21 @@ async function cmdLogin(argv, services = {}) {
     return 1;
   }
   const baseUrl = resolveBaseUrl(argv);
+  const channelFlag = argv.find(arg => arg.startsWith("--channel-id="));
+  const channelIndex = argv.indexOf("--channel-id");
+  let channelId;
+  if (channelFlag) channelId = channelFlag.slice("--channel-id=".length);
+  else if (channelIndex !== -1) channelId = argv[channelIndex + 1];
+  if ((channelFlag || channelIndex !== -1) && (!channelId?.trim() || channelId.startsWith("--"))) {
+    process.stderr.write("错误：--channel-id 需要非空渠道值\n");
+    return 1;
+  }
   const client = new WinkClient({ baseUrl });
   let tracking = services.tracking;
   try { tracking ||= require("./tracking").createTracking({ client }); } catch (_) {}
   try { tracking?.emit("auth_start"); } catch (_) {}
   // authUrl() 为纯本地计算，不发起网络请求，保证 10 秒内必定输出链接。
-  const link = client.authUrl();
+  const link = client.authUrl(undefined, undefined, channelId);
   process.stdout.write(`\n${link.auth_url}\n\n`);
   // Direct Skill execution has no connector panel to open the URL. Do not gate
   // on isTTY: agent tools and background jobs normally use pipes for output.
@@ -197,7 +206,7 @@ async function main(argv, services = {}) {
   const rest = argv.slice(1);
   if (["login", "auth", "status", "logout", "unauth", "unAuth", "doctor"].includes(command) &&
       rest.some(arg => arg === "--help" || arg === "-h")) {
-    process.stdout.write(`wink-cli ${command}${["login", "auth"].includes(command) ? " [--open-browser]" : ""}\n\n${HELP}\n`);
+    process.stdout.write(`wink-cli ${command}${["login", "auth"].includes(command) ? " [--open-browser] [--channel-id <id>]" : ""}\n\n${HELP}\n`);
     return 0;
   }
   switch (command) {

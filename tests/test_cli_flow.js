@@ -38,12 +38,15 @@ async function capture(fn) {
     let exchanged = 0, stored, opened;
     const authEvents = [];
     const auth = await capture(() => ensureApiKey({
-      authUrl: () => ({ auth_url: "https://example.invalid/auth", once_code: "bound-code" }),
+      authUrl: (code, clientId, channel) => {
+        assert.strictEqual(channel, "workbuddy", "business-triggered login preserves the requested channel");
+        return { auth_url: "https://example.invalid/auth", once_code: "bound-code" };
+      },
       exchange: async (code) => {
         assert.strictEqual(code, "bound-code");
         return ++exchanged === 1 ? { code: 20001 } : { code: 0, data: { api_key: "new-test-key" } };
       },
-    }, { relogin: true }, {
+    }, { relogin: true, "channel-id": "workbuddy" }, {
       onAuthStart: () => authEvents.push("start"),
       onAuthSuccess: () => authEvents.push("success"),
       onAuthFailed: () => authEvents.push("failed"),

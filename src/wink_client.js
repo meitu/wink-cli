@@ -194,12 +194,15 @@ class WinkClient {
    *   /init/exchange afterwards without the human copying anything.
    * @param {string} [clientId] optional client id override; default
    *   WINK_CLIENT_ID env then DEFAULT_CLIENT_ID.
+   * @param {string} [channelId] optional channel override; shared with task channel inference.
    */
-  authUrl(onceCode, clientId) {
+  authUrl(onceCode, clientId, channelId) {
     const code = (onceCode && /^[a-z0-9]{16,32}$/.test(onceCode)) ? onceCode : generateOnceCode();
     const url = new URL(`${authPageBaseUrl(this.baseUrl)}/init/auth`);
     url.searchParams.set("once_code", code);
     url.searchParams.set("client_id", resolveClientId(clientId));
+    url.searchParams.set("channel", firstNonEmpty(channelId, process.env.WINK_TASK_CHANNEL_ID,
+      detectAgentChannelId(process.env, [process.execPath, process.argv?.[1]])));
     return { ok: true, auth_url: url.toString(), once_code: code };
   }
 

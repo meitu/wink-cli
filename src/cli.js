@@ -376,7 +376,7 @@ async function ensureApiKey(client, flags, hooks = {}) {
     if (cached) return cached;
   }
   hooks.onAuthStart?.();
-  const link = client.authUrl();
+  const link = client.authUrl(undefined, undefined, optionValue(flags, "channel-id"));
   progress("未检测到可用的 api_key，开始 SSO 授权登录…");
   progress(`授权链接: ${link.auth_url}`);
   (hooks.openBrowser || openBrowser)(link.auth_url);

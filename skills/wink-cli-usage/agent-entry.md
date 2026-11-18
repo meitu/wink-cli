@@ -17,7 +17,7 @@ description: 使用 Wink CLI 处理图片或视频，支持功能编号选择和
 
 按返回的说明检查环境、登录状态、功能与档位，再执行用户授权的处理。若业务命令 `wink-cli --version` 与读取的 CLI 版本不一致，先修正 PATH 或使用该安装目录中的 CLI。不要用旧版业务命令配合新版说明。
 
-命令不存在、退出失败或正文缺失时，停止业务投递并说明需要重新运行 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.10 install` 修复安装；不要凭记忆猜测参数。排障时可在上述读取命令末尾加 `--reference http-api` 获取同版本参考。
+命令不存在、退出失败或正文缺失时，停止业务投递并说明需要重新运行 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.11 install` 修复安装；不要凭记忆猜测参数。排障时可在上述读取命令末尾加 `--reference http-api` 获取同版本参考。
 
 登录由 CLI 的正常流程处理；WorkBuddy 中也可通过连接器完成授权。读取 Skill 不代表用户已授权收费处理。只交付 CLI 判定成功的真实结果链接，显示为“查看优化后素材”，最近任务入口显示为“查看最近任务”。不要回显凭据或将原素材链接作为成功结果。
 
@@ -28,6 +28,6 @@ description: 使用 Wink CLI 处理图片或视频，支持功能编号选择和
 
 进度只采用 CLI 实际返回值，不自行倒计时或推算处理百分比。接口尚未给出具体阶段时，不猜测为“加水印中”。
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.10 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.11 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 调用来源埋点：每次 CLI 调用（含 help/version、登录和业务命令）同时传 `--expert-id "<入口原始ID>" --source-name "<入口完整中文展示名称>" --source-type <expert或skill>`，或仅在本次子进程设置 `WINK_EXPERT_ID`、`WINK_SOURCE_NAME`、`WINK_SOURCE_TYPE`。专家使用原始专家包 ID 和完整中文职称，source_type 固定为 expert；独立 Skill 使用原始 Skill ID 和完整中文展示名称，source_type 固定为 skill。expert_id 不添加类型前缀。专家调用内嵌 Skill、入口 Skill 调用下级 Skill 时整组沿用入口的三个值，不替换成下级来源；独立使用本说明 Skill 时使用 wink-cli-usage / Wink 图片视频全能处理 / skill。无来源上下文时不编造，缺省为 null；明确参数优先于对应环境变量，不持久化全局环境。进度包装脚本原样转发三个参数。

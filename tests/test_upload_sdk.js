@@ -188,6 +188,19 @@ async function testSubmitProtocol() {
     assert.ok(auth.auth_url.includes("client_id=uni-9"), "login auth URL reads WINK_CLIENT_ID");
     const explicit = new WinkClient({ baseUrl: "http://local" }).authUrl(undefined, "mac-9");
     assert.ok(explicit.auth_url.includes("client_id=mac-9"), "explicit clientId still overrides env");
+    saveEnv("WINK_TASK_CHANNEL_ID");
+    process.env.WINK_TASK_CHANNEL_ID = "cursor";
+    const code = "abcdefghijklmnopqrstuvwx01234567";
+    const inferred = new URL(new WinkClient({ baseUrl: "http://local" }).authUrl(code).auth_url);
+    assert.strictEqual(inferred.searchParams.get("channel"), "cursor");
+    assert.strictEqual(inferred.searchParams.get("once_code"), code);
+    for (const channel of ["workbuddy", "codex", "cli", "custom&channel=value"]) {
+      const url = new URL(new WinkClient({ baseUrl: "http://local" }).authUrl(code, "mac-9", channel).auth_url);
+      assert.strictEqual(url.searchParams.get("channel"), channel, "explicit auth channel overrides environment and is encoded");
+      assert.strictEqual(url.searchParams.get("client_id"), "mac-9");
+      assert.strictEqual(url.searchParams.get("once_code"), code);
+      assert.strictEqual(url.searchParams.size, 3);
+    }
   } finally {
     restoreEnv();
   }

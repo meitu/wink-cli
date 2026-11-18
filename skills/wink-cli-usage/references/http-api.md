@@ -49,3 +49,7 @@
 ## 智能全消（1.14.10）
 
 档位 3：视频 type=253，票据 function_id=633 / material_id=63341。档位 4：图片 type=228、视频 type=230，票据 function_id=633 / material_id=63331，仅单素材。新档位 type_params 为 is_mirror=0、userboxes=""，视频另含 orientation_tag=1；视频最长 600 秒。当前先在 beta 开放，以当前环境配置校验为准；新算法不沿用旧 exist_watermark 必须为真的判断。
+
+## 授权渠道（CLI 1.14.11 起）
+
+授权链接保留 once_code、client_id，并附带 channel。来源优先显式 --channel-id，然后 WINK_TASK_CHANNEL_ID，再沿用既有宿主检测。未传 channel 或 channel=workbuddy 的网页显示 WorkBuddy 专属文案并唤起 workbuddy://；显式其他渠道展示通用提示且不唤起应用。此参数仅用于网页展示，不是登录凭据，不影响 /init/exchange 兑换。网站上线后 /init/auth 同时支持 .cn 与 .ai；CLI 当前仍按原环境使用 .cn 授权域名，不自动跨域。
