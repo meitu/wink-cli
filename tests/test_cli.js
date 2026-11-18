@@ -126,7 +126,11 @@ async function testLevelTable() {
   assert.strictEqual(cli.taskTypeFor(1, "2", "remove_watermark").taskType, "3");
   assert.strictEqual(cli.taskTypeFor(2, "1", "remove_watermark").taskType, "95");
   assert.strictEqual(cli.taskTypeFor(2, "2", "remove_watermark").taskType, "94");
-  assert.throws(() => cli.taskTypeFor(3, "1", "remove_watermark"), /不支持的档位/);
+  assert.throws(() => cli.taskTypeFor(3, "1", "remove_watermark"), /不支持图片输入/);
+  assert.strictEqual(cli.taskTypeFor(3, "2", "remove_watermark").taskType, "253");
+  assert.strictEqual(cli.taskTypeFor(4, "1", "remove_watermark").taskType, "228");
+  assert.strictEqual(cli.taskTypeFor(4, "2", "remove_watermark").taskType, "230");
+  assert.throws(() => cli.taskTypeFor(5, "1", "remove_watermark"), /不支持的档位/);
 }
 
 async function testSplitInputs() {

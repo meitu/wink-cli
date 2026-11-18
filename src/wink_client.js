@@ -790,7 +790,8 @@ function taskState(data, options = {}) {
     return { phase: "running", error_code: resultCode, msg: result?.error_msg };
   }
   if (resultCode === 0) {
-    // website/shared/remove-watermark.ts：算法返回成功但未检测到水印/文字，也按失败交付。
+    // website/shared/remove-watermark.ts：旧档位未检测到水印/文字按失败交付。
+    // 智能全消 / Pro（253/228/230）不依赖旧检测标记，仍需有效算法输出。
     const type = Number(options.taskType ?? data.type);
     const watermark = [3, 94, 8, 95].includes(type);
     const text = [43, 98, 42, 99, 18, 100, 21, 101].includes(type);

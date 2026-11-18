@@ -508,6 +508,11 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
     }
   }
 
+  const selectedLevel = levelInfo(level, command);
+  if (selectedLevel.maxFiles && files.length > selectedLevel.maxFiles) {
+    progress(`错误: ${selectedLevel.name} 仅支持单个素材，不支持批量；未上传或投递`);
+    return 1;
+  }
   const client = (services.createClient || ((options) => new WinkClient(options)))({ baseUrl, log: (line) => progress(`        ${line}`) });
   let apiKey;
   try {
@@ -589,6 +594,10 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         beautySubmission = buildBeautySubmission(prepared.beauty, selectedBeautyStyle, contentType);
       }
       media = (services.probeMedia || probeMedia)(file);
+      if (contentType === "2" && info.maxDuration &&
+          (!Number.isFinite(media.duration) || media.duration <= 0 || media.duration > info.maxDuration)) {
+        throw new WinkError(`${info.name} 视频需有可核验的时长，且最长 ${info.maxDuration} 秒；不会自动裁剪`);
+      }
     } catch (error) {
       failed += 1;
       progress(`${file} 跳过：${error.message}`);
@@ -658,11 +667,14 @@ async function runCloudTool(command, flags, services = {}, environment = resolve
         ...(clientModel ? { clientModel } : {}),
         ...prepared.submit,
         typeParams: JSON.stringify({ ...prepared.params, ...beautySubmission?.params,
+          ...(command === "remove_watermark" && info.rightDetail ? {
+            is_mirror: 0, ...(contentType === "2" ? { orientation_tag: 1 } : {}), userboxes: "",
+          } : {}),
           ...(command === "cartoon" && contentType === "1" ? { preview: 1 } : {}),
           ...(referenceUpload ? { cover_pic: referenceUpload.resource_url } : {}) }),
         ...(referenceUpload ? { coverPic: referenceUpload.resource_url } : {}),
         // 全能修复的票据功能/物料 ID 与配置 func_id 不同，沿用官网明确的权益标识。
-        rightDetail: JSON.stringify(beautySubmission?.rightDetail || tool.rightDetail || { source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
+        rightDetail: JSON.stringify(beautySubmission?.rightDetail || info.rightDetail || tool.rightDetail || { source: "1", touch_type: "4", function_id: String(selectedConfig?.func_id ?? info.functionId ?? "0") }),
         interval,
         timeout,
         onInsufficientBeans: async rejection => {

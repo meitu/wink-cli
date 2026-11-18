@@ -41,7 +41,11 @@
 - 投递成功通常从 `data.msg_id` 取得任务 ID，兼容旧 `data.task_id`。成功投递不表示处理成功；查询进度100%也不单独作为成功依据。
 - 当前结果逐项从 `data.result.media_info_list` 提取：优先使用 `raw_media_data`（无水印处理结果），为空或不是有效 HTTP/HTTPS 链接时回退 `media_data`。顶层 `data.url` 可能是原素材。以最终 CLI JSON 中 `results[].ok` 与 `result_url` 为交付依据，不直接选抓包中第一个 URL。
 - 查询失败或超时但已有任务 ID 时，不重新投递；提供任务标识与 [查看最近任务](https://wink.cn/editor/recent-task)。
-- 去水印未检测到水印、算法失败、缺少结果链接，都应报告失败；不得把原素材链接当作处理结果。
+- 旧去水印档位（type 3/8/94/95）未检测到水印、任意算法失败、缺少结果链接，都应报告失败；不得把原素材链接当作处理结果。
 - 媒体约束由实时配置与 CLI 校验决定，不凭“普通用户”字样推断账号会员档位，不自动切片或降档。
 
 排障报告保留请求方法、路径、HTTP 状态、服务端 `code`／`message` 和已有任务 ID。只转述实际证据，不把本地拒绝说成服务端已处理，也不将相同文件名或尺寸当作结果与原文件相同的证据。
+
+## 智能全消（1.14.10）
+
+档位 3：视频 type=253，票据 function_id=633 / material_id=63341。档位 4：图片 type=228、视频 type=230，票据 function_id=633 / material_id=63331，仅单素材。新档位 type_params 为 is_mirror=0、userboxes=""，视频另含 orientation_tag=1；视频最长 600 秒。当前先在 beta 开放，以当前环境配置校验为准；新算法不沿用旧 exist_watermark 必须为真的判断。

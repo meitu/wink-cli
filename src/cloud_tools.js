@@ -23,6 +23,11 @@ const PICTURE_QUALITY_LEVELS = [
 const REMOVE_WATERMARK_LEVELS = [
   { level: 1, name: "自动去印", image: "8", video: "3", funcType: "5", functionId: "63390" },
   { level: 2, name: "AI去水印", image: "95", video: "94", funcType: "51", functionId: "63390" },
+  // website smart-erase / remove-watermark-pro（2026-11-18），配置未开放时不降级投递。
+  { level: 3, name: "智能全消", video: "253", maxDuration: 600,
+    rightDetail: { source: "1", touch_type: "4", function_id: "633", material_id: "63341" } },
+  { level: 4, name: "智能全消 Pro", image: "228", video: "230", maxDuration: 600, maxFiles: 1,
+    rightDetail: { source: "1", touch_type: "4", function_id: "633", material_id: "63331" } },
 ];
 const single = (name, image, video, extra = {}) => ({ name, defaultLevel: 1, levels: [{ level: 1, name, image, video }], ...extra });
 const COMMANDS = Object.freeze({
@@ -33,7 +38,8 @@ const COMMANDS = Object.freeze({
     rightDetail: { source: "1", touch_type: "4", function_id: "655", material_id: "65511" },
     options: ["Pro 单档，默认开启抖动检测；处理完整视频，不额外串联补帧、去水印等任务"] },
   resolution_repair: single("分辨率修复", "6", "5", { options: ["--sr-mode <n>                分辨率：0=720p / 1=1080p / 2=2K / 3=4K / 4=8K，默认 1"] }),
-  remove_watermark: { name: "消除水印", defaultLevel: 1, levels: REMOVE_WATERMARK_LEVELS },
+  remove_watermark: { name: "消除水印", defaultLevel: 1, levels: REMOVE_WATERMARK_LEVELS,
+    options: ["智能全消仅支持视频，可批量；智能全消 Pro 支持单个图片或视频，不支持批量", "两个新档位的视频最长 600 秒；当前先在 beta 开放，必须通过当前环境配置校验"] },
   denoise: single("降噪", "10", "9", { options: ["--strength <value>           low / median / high，默认 low"] }),
   color_enhance: single("色彩增强", "15", "14"),
   color_unite: single("色调统一", "93", "16", { options: ["--reference <path>           参考图片绝对路径（必填）"], example: '--reference "D:\\reference.jpg"' }),

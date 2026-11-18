@@ -38,7 +38,7 @@ wink-cli doctor --json
 | `base_url` | 当前服务地址 | 应为正式环境地址 |
 | `logged_in` | 本地是否已有凭据 | 在线有效性由服务端判断；`false` 时先完成授权 |
 
-同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.9 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
+同时确认 `wink-cli --version` 与正在读取的 Skill 所属 CLI 版本一致。命令不存在、版本低于 1.14.0 或连接器安装失败导致 CLI 不可用时，运行一次 `npx --yes --userconfig=/dev/null meitu-wink-cli@1.14.10 install`（Windows 可用 `npx.cmd`），等待安装完成后重新核验。WorkBuddy 市场搜不到 Wink 时也使用此兜底；已有可用 CLI 时直接复用，不要求先连接市场条目。
 
 安装需要 Node.js 18+、npm 和 Git。依赖缺失、网络或安装失败时报告真实错误和“尚未提交”，不循环安装。若 PATH 仍命中旧版本，用 `npm --userconfig=/dev/null root -g` 找到当前 npm 的全局包目录，以 `node "<全局包目录>/wink-cli/src/cli.js" ...` 使用同一安装包；核验版本并重新读取本说明，不使用临时 npx 缓存路径。独立业务 Skill 的功能、档位和用户选择不因安装兜底改变；不要绕过 CLI 直连接口。
 
@@ -63,7 +63,7 @@ wink-cli <命令> [--level <n>] --input "<绝对路径>" [专属参数] --json
 | `picture_quality` | 画质修复 | 1 高清 / 2 超清（默认）/ 3 人像增强 / 4 AI超清 / 5 商品图 / 6 文字图表 / 7 游戏 / 8 动漫 / 9 高糊图 / 10 演唱会 / 11 专业级修复 / 12 AIGC精修 |
 | `video_repair` | 全能修复 | Pro 单档，支持图片/视频，无需 `--level`；视频自 1.11.0 起、图片自 1.14.7 起支持 |
 | `resolution_repair` | 分辨率修复 | 单档位，用 `--sr-mode` 选目标分辨率 |
-| `remove_watermark` | 消除水印 | 1 自动去印（默认）/ 2 AI去水印 |
+| `remove_watermark` | 消除水印 | 1 自动去印（默认）/ 2 AI去水印 / 3 智能全消（仅视频）/ 4 智能全消 Pro（单素材） |
 | `denoise` | 降噪 | 单档位 |
 | `color_enhance` | 色彩增强 | 单档位 |
 | `color_unite` | 色调统一 | 单档位，需 `--reference` |
@@ -292,9 +292,23 @@ wink-cli picture_quality --help
 
 参考说明授权、能力配置、风格列表、投递和轮询的实际协议边界；日常一律走 CLI，不凭旧接口示例绕过本地校验。
 
+## 智能全消（CLI 1.14.10 起）
+
+- `remove_watermark --level 3`：智能全消，仅视频，支持单个或批量；算法 type=253。
+- `remove_watermark --level 4`：智能全消 Pro，单个图片或视频，暂不支持批量；图片 type=228、视频 type=230。
+- 两个新档位的视频最长 600 秒。不得自动裁剪或回退到旧档位。当前先在 beta 提供；测试显式使用 `--env beta`，未指定环境仍为 release。CLI 必须在上传前核验当前环境配置，未开放就停止，不自动切换环境。
+- 计费票据分别使用 function_id=633、material_id=63341（智能全消）或 63331（Pro），由 CLI 生成，不手写覆盖。
+- 新算法成功不要求返回旧档位的 `exist_watermark=true`；仍需有效结果链接，服务端失败必须如实报告。
+- 新增档位可与其他能力按用户指定顺序串联；编号 1、2 和默认档位均保持不变。
+
+```bash
+wink-cli remove_watermark --level 3 --env beta --input "/absolute/video.mp4"
+wink-cli remove_watermark --level 4 --env beta --input "/absolute/photo.jpg"
+```
+
 ## 去水印结果交付（CLI 1.11.1 起）
 
-以 JSON `results[].ok` 判断各素材状态，只交付成功项的 `result_url`。未检测到水印、算法失败、结果链接缺失时报告真实原因，不把响应或进度中的原素材 URL 当作成功结果。混合批次分别说明成功和失败。当前版本已包含此修复；升级不能改变上述成功判定。
+以 JSON `results[].ok` 判断各素材状态，只交付成功项的 `result_url`。旧档位（1/2）未检测到水印、任意档位算法失败或结果链接缺失时报告真实原因，不把响应或进度中的原素材 URL 当作成功结果。混合批次分别说明成功和失败。当前版本已包含此修复；升级不能改变上述成功判定。
 
 ## WorkBuddy 链接展示
 
@@ -302,7 +316,7 @@ wink-cli picture_quality --help
 - 只对 `results[]` 中 `ok === true` 且具有有效 HTTP(S) `result_url` 的成功项展示 `[查看优化后素材](<RESULT_URL>)`。将 `RESULT_URL` 替换为该项真实完整地址，保留全部查询参数和签名；不缩短、重拼或替换成原素材/封面地址，不把占位符交给用户。
 - 最近任务入口统一展示为 [查看最近任务](https://wink.cn/editor/recent-task)。任务提交后、结果交付时或已有任务的轮询中断时可提供；这个入口本身不代表任务已成功，也不承诺该账号一定能查到本次任务。
 - 单文件按“原文件名 · 已完成 · 查看优化后素材”的形式交付，其中“查看优化后素材”必须是上述超链接。批量逐项列出文件名、真实状态及对应结果超链接；最近任务入口在列表后统一提供一次。
-- 失败、未检测到水印、结果缺失或尚未提交时不展示“查看优化后素材”，只说明真实原因和已有任务标识；混合批次只为成功项生成结果超链接，不因展示规则改变能力限制或成功判定。
+- 失败、旧档位未检测到水印、结果缺失或尚未提交时不展示“查看优化后素材”，只说明真实原因和已有任务标识；混合批次只为成功项生成结果超链接，不因展示规则改变能力限制或成功判定。
 - 其他面向用户的业务链接也使用语义标题，例如“访问 Wink 官网”“前往授权”“购买美豆”；授权和购买地址仅使用工具实际提供的完整地址，不编造链接，不展示内部 API 或调试地址。
 
 回复排版示例（仅示意；真实回复用实际结果替换 `RESULT_URL`，不要保留代码块）：
@@ -313,7 +327,7 @@ wink-cli picture_quality --help
 [查看最近任务](https://wink.cn/editor/recent-task)
 ```
 
-安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.9 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
+安装与 npm 路径查询使用空的用户配置，避免 npm 自动读取含令牌的 `~/.npmrc`：上述 `--userconfig=/dev/null` 适用于 macOS/Linux；Windows 使用 `npx.cmd --yes --userconfig=NUL meitu-wink-cli@1.14.10 install` 和 `npm.cmd --userconfig=NUL root -g`。保留这些参数，不读取或打印 `.npmrc`、完整环境变量或 npm 配置，不要求用户提供 npm Token，也不关闭 Agent 的凭据保护。若自定义镜像、代理或安装目录因隔离用户配置而不可用，报告实际错误，可由用户明确指定非敏感配置，不恢复读取凭据文件。
 
 ## 美豆不足时的即时提示与购买链接
 
