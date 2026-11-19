@@ -1,4 +1,5 @@
 "use strict";
+require("../src/auth_domain").resolveAuthDomain = async () => "wink.ai";
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -38,7 +39,8 @@ async function capture(fn) {
     let exchanged = 0, stored, opened;
     const authEvents = [];
     const auth = await capture(() => ensureApiKey({
-      authUrl: (code, clientId, channel) => {
+      authUrl: (code, clientId, channel, authDomain) => {
+        assert.strictEqual(authDomain, "wink.ai", "business login uses the detected authorization domain");
         assert.strictEqual(channel, "workbuddy", "business-triggered login preserves the requested channel");
         return { auth_url: "https://example.invalid/auth", once_code: "bound-code" };
       },

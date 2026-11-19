@@ -12,6 +12,7 @@ const guard = path.join(temp, "guard.cjs");
 
 try {
   fs.writeFileSync(guard, `
+    require(${JSON.stringify(path.join(root, "src/auth_domain.js"))}).resolveAuthDomain = async () => "wink.ai";
     const fs = require('fs');
     const path = require('path');
     const config = require(${JSON.stringify(path.join(root, "src/runtime_config.js"))});
@@ -52,7 +53,7 @@ try {
   const recorded = fs.readFileSync(events, "utf8").trim().split("\n").map(JSON.parse);
   assert.deepStrictEqual(recorded.map(event => event.type), ["browser", "exchange"]);
   const url = new URL(recorded[0].url);
-  assert.strictEqual(url.origin, "https://beta.wink.cn");
+  assert.strictEqual(url.origin, "https://beta.wink.ai");
   assert.strictEqual(recorded[1].code, url.searchParams.get("once_code"));
   assert.ok(url.searchParams.has("client_id"));
   assert.strictEqual(url.searchParams.has("op_type"), false);

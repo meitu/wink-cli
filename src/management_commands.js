@@ -6,6 +6,7 @@ const { WinkClient, responseOk, dataObject } = require("./wink_client");
 const { credentialFile, ENVIRONMENTS, DEFAULT_ENV } = require("./runtime_config");
 const { cmdSkill } = require("./connector_skill");
 const { openBrowser } = require("./open_browser");
+const { resolveAuthDomain } = require("./auth_domain");
 
 const { writeUid, identityFile } = require("./user_identity");
 
@@ -92,8 +93,9 @@ async function cmdLogin(argv, services = {}) {
   let tracking = services.tracking;
   try { tracking ||= require("./tracking").createTracking({ client }); } catch (_) {}
   try { tracking?.emit("auth_start"); } catch (_) {}
-  // authUrl() 为纯本地计算，不发起网络请求，保证 10 秒内必定输出链接。
-  const link = client.authUrl(undefined, undefined, channelId);
+  // 地区查询总计最多 5 秒，失败时沿用国内授权入口。
+  const authDomain = await resolveAuthDomain(baseUrl, { onWarning: message => process.stderr.write(`${message}\n`) });
+  const link = client.authUrl(undefined, undefined, channelId, authDomain);
   process.stdout.write(`\n${link.auth_url}\n\n`);
   // Direct Skill execution has no connector panel to open the URL. Do not gate
   // on isTTY: agent tools and background jobs normally use pipes for output.

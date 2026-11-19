@@ -34,7 +34,8 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
       if (name === "./wink_client") return {
         WinkClient: class {
           withApiKey() { return this; }
-          authUrl(onceCode, clientId, channel) {
+          authUrl(onceCode, clientId, channel, authDomain) {
+            assert.strictEqual(authDomain, "wink.ai", "management login uses detected domain");
             assert.strictEqual(channel, expectedChannel, "management login passes the requested channel");
             events.push("auth-url"); return { auth_url: url, once_code: code };
           }
@@ -47,6 +48,7 @@ async function login({ platform = "darwin", autoOpen = true, failOpen = false, t
         responseOk: payload => payload.code === 0,
         dataObject: payload => payload.data,
       };
+      if (name === "./auth_domain") return { resolveAuthDomain: async () => "wink.ai" };
       if (name === "./runtime_config") return {
         credentialFile: () => "/fixture/credentials/key",
         ENVIRONMENTS: { release: "https://cliapi-winkcut.meitu.com" }, DEFAULT_ENV: "release",

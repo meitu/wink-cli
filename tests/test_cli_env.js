@@ -1,4 +1,5 @@
 "use strict";
+require("../src/auth_domain").resolveAuthDomain = async () => "wink.cn";
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");

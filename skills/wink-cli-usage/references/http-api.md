@@ -52,4 +52,8 @@
 
 ## 授权渠道（CLI 1.14.11 起）
 
-授权链接保留 once_code、client_id，并附带 channel。来源优先显式 --channel-id，然后 WINK_TASK_CHANNEL_ID，再沿用既有宿主检测。未传 channel 或 channel=workbuddy 的网页显示 WorkBuddy 专属文案并唤起 workbuddy://；显式其他渠道展示通用提示且不唤起应用。此参数仅用于网页展示，不是登录凭据，不影响 /init/exchange 兑换。网站上线后 /init/auth 同时支持 .cn 与 .ai；CLI 当前仍按原环境使用 .cn 授权域名，不自动跨域。
+授权链接保留 once_code、client_id，并附带 channel。来源优先显式 --channel-id，然后 WINK_TASK_CHANNEL_ID，再沿用既有宿主检测。未传 channel 或 channel=workbuddy 的网页显示 WorkBuddy 专属文案并唤起 workbuddy://；显式其他渠道展示通用提示且不唤起应用。此参数仅用于网页展示，不是登录凭据，不影响 /init/exchange 兑换。网站上线后 /init/auth 同时支持 .cn 与 .ai；CLI 1.14.11 使用 .cn 授权域名；1.14.12 起的自动站点选择见下节。
+
+## 授权站点（CLI 1.14.12 起）
+
+CLI 在需要授权时调用 Wink 官方 `/xapi/geo`，按执行环境公网 IP 的国家码自动选择站点：CN 使用 wink.cn，其他有效国家码使用 wink.ai；beta/pre 使用对应子域名。不根据语言、MD 来源或安装目录判断，无需安装参数，也不保存地区选择或 IP 信息。优先查询 wink.ai，失败后查询 wink.cn，每次最多 2.5 秒；均失败则输出警告并沿用 wink.cn。安装、状态检查和已有有效凭据的任务不查询地区。自定义 API 地址仍使用自身授权入口。API 服务、凭据隔离、once_code/client_id/channel 和兑换协议保持原样；不要手动替换授权链接。

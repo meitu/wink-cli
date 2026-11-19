@@ -16,11 +16,12 @@ const AUTH_ENVIRONMENTS = Object.freeze({
   release: "https://wink.cn",
 });
 
-function authPageBaseUrl(baseUrl) {
+function authPageBaseUrl(baseUrl, domain = "wink.cn") {
   const base = baseUrl.replace(/\/$/, "");
   const env = Object.keys(ENVIRONMENTS).find(name => ENVIRONMENTS[name] === base);
   // Custom/local API endpoints keep their own authorization route.
-  return env ? AUTH_ENVIRONMENTS[env] : base;
+  if (!env) return base;
+  return domain === "wink.ai" ? AUTH_ENVIRONMENTS[env].replace("wink.cn", domain) : AUTH_ENVIRONMENTS[env];
 }
 
 // 保留历史凭据目录，避免项目精简后要求已有用户重新授权。

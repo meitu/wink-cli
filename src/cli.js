@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+
 /**
  * Wink CLI —— 图片和视频云处理命令行入口。
  *
@@ -16,6 +17,7 @@
  */
 
 const fs = require("fs");
+const { resolveAuthDomain } = require("./auth_domain");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
@@ -376,7 +378,8 @@ async function ensureApiKey(client, flags, hooks = {}) {
     if (cached) return cached;
   }
   hooks.onAuthStart?.();
-  const link = client.authUrl(undefined, undefined, optionValue(flags, "channel-id"));
+  const authDomain = await resolveAuthDomain(client.baseUrl, { onWarning: progress });
+  const link = client.authUrl(undefined, undefined, optionValue(flags, "channel-id"), authDomain);
   progress("未检测到可用的 api_key，开始 SSO 授权登录…");
   progress(`授权链接: ${link.auth_url}`);
   (hooks.openBrowser || openBrowser)(link.auth_url);

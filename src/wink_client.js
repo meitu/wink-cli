@@ -195,10 +195,11 @@ class WinkClient {
    * @param {string} [clientId] optional client id override; default
    *   WINK_CLIENT_ID env then DEFAULT_CLIENT_ID.
    * @param {string} [channelId] optional channel override; shared with task channel inference.
+   * @param {string} [authDomain] official authorization domain selected from the execution IP.
    */
-  authUrl(onceCode, clientId, channelId) {
+  authUrl(onceCode, clientId, channelId, authDomain) {
     const code = (onceCode && /^[a-z0-9]{16,32}$/.test(onceCode)) ? onceCode : generateOnceCode();
-    const url = new URL(`${authPageBaseUrl(this.baseUrl)}/init/auth`);
+    const url = new URL(`${authPageBaseUrl(this.baseUrl, authDomain)}/init/auth`);
     url.searchParams.set("once_code", code);
     url.searchParams.set("client_id", resolveClientId(clientId));
     url.searchParams.set("channel", firstNonEmpty(channelId, process.env.WINK_TASK_CHANNEL_ID,
