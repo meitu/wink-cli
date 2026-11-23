@@ -39,7 +39,7 @@ const COMMANDS = Object.freeze({
     options: ["Pro 单档，默认开启抖动检测；处理完整视频，不额外串联补帧、去水印等任务"] },
   resolution_repair: single("分辨率修复", "6", "5", { options: ["--sr-mode <n>                分辨率：0=720p / 1=1080p / 2=2K / 3=4K / 4=8K，默认 1"] }),
   remove_watermark: { name: "消除水印", defaultLevel: 1, levels: REMOVE_WATERMARK_LEVELS,
-    options: ["智能全消仅支持视频，可批量；智能全消 Pro 支持单个图片或视频，不支持批量", "两个新档位的视频最长 600 秒；当前先在 beta 开放，必须通过当前环境配置校验"] },
+    options: ["智能全消仅支持视频，可批量；智能全消 Pro 支持单个图片或视频，不支持批量", "两个新档位的视频最长 600 秒；是否可用以当前环境的实际配置为准，未开放时不自动切换环境"] },
   denoise: single("降噪", "10", "9", { options: ["--strength <value>           low / median / high，默认 low"] }),
   color_enhance: single("色彩增强", "15", "14"),
   color_unite: single("色调统一", "93", "16", { options: ["--reference <path>           参考图片绝对路径（必填）"], example: '--reference "D:\\reference.jpg"' }),
