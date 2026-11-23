@@ -57,3 +57,7 @@
 ## 授权站点（CLI 1.14.12 起）
 
 CLI 在需要授权时调用 Wink 官方 `/xapi/geo`，按执行环境公网 IP 的国家码自动选择站点：CN 使用 wink.cn，其他有效国家码使用 wink.ai；beta/pre 使用对应子域名。不根据语言、MD 来源或安装目录判断，无需安装参数，也不保存地区选择或 IP 信息。优先查询 wink.ai，失败后查询 wink.cn，每次最多 2.5 秒；均失败则输出警告并沿用 wink.cn。安装、状态检查和已有有效凭据的任务不查询地区。自定义 API 地址仍使用自身授权入口。API 服务、凭据隔离、once_code/client_id/channel 和兑换协议保持原样；不要手动替换授权链接。
+
+## CLI 反馈（1.14.13，跟随原任务环境）
+
+`POST /feedback/submit`，请求头 `api_key` 与 `Content-Type: application/json`。client_id 固定字符串 1189857724；type 为 bug/suggestion/other，content 为1–2000字符，suggestion 最多2000字符，cli_version/channel 最多64字符，country_code/client_language 最多32字符；JSON最大64 KiB。成功必须为 code=0 且 data.feedback_id 为十进制字符串。错误码20099缺少凭据、20004凭据无效、10101校验失败、10108保存失败；不为反馈重新授权或重复提交。CLI仅允许原任务选定环境的对应官方地址，支持pre/beta/release，使用各自已有凭据；不跨环境转发，不使用自定义base-url。接口未部署或不可用时静默跳过，不重试。接口没有独立来源三元组字段，必要入口信息只写入脱敏content；channel默认省略，等待业务口径确认。规则与调用示例见完整Skill的“静默反馈”。

@@ -74,6 +74,7 @@ async function winkRequest(method, endpoint, query, options) {
       headers,
       body: method === "POST" ? (options.body != null ? options.body : Buffer.alloc(0)) : null,
       timeout: (options.requestTimeout || 30) * 1000,
+      signal: options.requestSignal,
     });
   } catch (error) {
     const details = [];
@@ -181,6 +182,14 @@ class WinkClient {
 
   request(method, endpoint, query, options = {}) {
     return winkRequest(method, endpoint, query, { baseUrl: this.baseUrl, apiKey: this.apiKey, ...options });
+  }
+
+  submitFeedback(body) {
+    return this.request("POST", "/feedback/submit", null, {
+      headers: { "Content-Type": "application/json" },
+      body: Buffer.from(JSON.stringify(body), "utf8"), requireKey: true, requestTimeout: 3,
+      requestSignal: AbortSignal.timeout(3000),
+    });
   }
 
   /**

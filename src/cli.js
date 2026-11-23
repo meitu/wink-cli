@@ -101,6 +101,7 @@ const MAIN_HELP = [
   "  logout                  退出登录，清理本地凭据",
   "  doctor                  检查环境与版本（支持 --json）",
   "  skill                   读取当前 CLI 的使用说明（支持 --json）",
+  "  feedback                提交脱敏反馈（跟随原任务环境；--help 查看说明）",
   "",
   "安装命令:",
   "  install                 安装 CLI 与 Agent 使用 Skill（详见 wink-cli install --help）",
@@ -782,6 +783,7 @@ async function execute(argv, services = {}) {
   try {
     environment = resolveEnvironment(flags);
   } catch (error) {
+    if (_[0] === "feedback" && flags.silent === true) return 0;
     progress(`错误: ${error.message}`);
     return 1;
   }
@@ -791,6 +793,11 @@ async function execute(argv, services = {}) {
     return 0;
   }
   const command = _[0];
+  if (command === "feedback") {
+    const { FEEDBACK_HELP, runFeedback } = require("./feedback");
+    if (wantsHelp) { printHelp(FEEDBACK_HELP); return 0; }
+    return runFeedback(flags, environment, { ...services, positional: _.slice(1) });
+  }
   if (["login", "auth", "status", "logout", "unauth", "unAuth", "doctor", "skill", "version"].includes(command)) {
     // Preserve argument order and duplicates for the strict Skill parser. Route
     // auth/doctor through the same environment as cloud commands.
@@ -833,7 +840,8 @@ async function execute(argv, services = {}) {
 // Track every cloud tool; read-only management commands stay outside tracking.
 async function main(argv, services = {}) {
   const { _, flags } = parseArgv(argv);
-  validateSourceFlags(flags);
+  try { validateSourceFlags(flags); }
+  catch (error) { if (_[0] === "feedback" && flags.silent === true) return 0; throw error; }
   const eligible = !_[0] || ["help", "version", "login", "auth"].includes(_[0]) || Object.hasOwn(COMMANDS, _[0]);
   let tracking = services.tracking;
   if (!tracking && eligible && !services.createClient) {

@@ -82,7 +82,7 @@ function detectOperatingSystem({ platform = process.platform, env = process.env,
   } catch (_) { /* Missing OS metadata must not disable analytics or processing. */ }
   return { os_type, os_version };
 }
-function redactPrompt(value) {
+function redactText(value) {
   if (typeof value !== "string") return null;
   return value
     .replace(/(?:https?:\/\/|file:\/\/)[^\s<>"']+/gi, "[链接]")
@@ -91,8 +91,11 @@ function redactPrompt(value) {
     .replace(/((?:api[_-]?key|access[_-]?token|password|密码|token)\s*[=:：]\s*)[^\s,，;；]+/gi, "$1[凭据]")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[邮箱]")
     .replace(/\b\d{17}[\dXx]\b/g, "[证件号]")
-    .replace(/(?:\+?86[- ]?)?1[3-9]\d{9}\b/g, "[手机号]")
-    .slice(0, 2000);
+    .replace(/(?:\+?86[- ]?)?1[3-9]\d{9}\b/g, "[手机号]");
+}
+function redactPrompt(value) {
+  const text = redactText(value);
+  return text === null ? null : text.slice(0, 2000);
 }
 function dispatch(packet) {
   // Credentials travel through an anonymous pipe, never command arguments or disk.
@@ -163,4 +166,4 @@ function createTracking({ client, source, expertId, sourceName, sourceType, env 
   } catch (_) { return NOOP; }
 }
 function optionalText(value) { return typeof value === "string" && value.trim() ? value.trim() : null; }
-module.exports = { createTracking, redactPrompt, detectOperatingSystem, detectCpuModel };
+module.exports = { createTracking, redactText, redactPrompt, detectOperatingSystem, detectCpuModel };

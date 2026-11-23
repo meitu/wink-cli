@@ -89,7 +89,7 @@ function request(method, rawUrl, options = {}) {
   if (body && headers["Content-Length"] == null) headers["Content-Length"] = String(body.length);
 
   return new Promise((resolve, reject) => {
-    const req = client.request(url, { method, headers }, (res) => {
+    const req = client.request(url, { method, headers, signal: options.signal }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
       res.on("end", () => {
